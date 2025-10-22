@@ -76,25 +76,36 @@ export default function Home() {
     try {
       const site = sites.find(s => s.id === id);
       if (!site) return;
-
-      const resp = await fetch("/api/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          cmd,
-          cwd: site.folderPath
-        }),
+      const resp = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd, cwd: site.folderPath }),
       });
       const data = await resp.json();
       if (!resp.ok || !data.ok) {
         throw new Error(data.error || `Failed to ${cmd === 'branches' ? 'get branches' : 'list folders'}`);
       }
-      
-      setSites(prev => prev.map(s => 
-        s.id === id 
-          ? { ...s, commandOutput: data.stdout }
-          : s
-      ));
+
+      // For branches, parse stdout into an array and update site.branches
+      if (cmd === 'branches') {
+        const branches = (data.stdout || '')
+          .split(/\r?\n/)
+          .map((b: string) => b.trim())
+          .filter(Boolean);
+
+        setSites(prev => prev.map(s => {
+          if (s.id !== id) return s;
+          // Always use the current git branch as the active branch when listing branches
+          const currentBranch: string | undefined = data.currentBranch;
+          // Set activeBranch to currentBranch if it exists in the branch list, otherwise keep existing or use first
+          const active = currentBranch && branches.includes(currentBranch) 
+            ? currentBranch 
+            : (s.activeBranch && branches.includes(s.activeBranch) ? s.activeBranch : branches[0] || '');
+          return { ...s, branches, activeBranch: active, commandOutput: data.stdout };
+        }));
+      } else {
+        setSites(prev => prev.map(s => s.id === id ? { ...s, commandOutput: data.stdout } : s));
+      }
     } catch (error) {
       console.error(error);
       alert(error instanceof Error ? error.message : 'An error occurred');
@@ -102,6 +113,41 @@ export default function Home() {
       setBusy(prev => ({ ...prev, [id]: false }));
     }
   }
+
+  // Optionally pre-load branches for all sites on mount (non-blocking)
+  useEffect(() => {
+    sites.forEach(s => {
+      // don't block UI; fire-and-forget
+      (async () => {
+        try {
+          const resp = await fetch('/api/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ cmd: 'branches', cwd: s.folderPath }),
+          });
+          const data = await resp.json();
+          if (resp.ok && data.ok) {
+            const branches = (data.stdout || '')
+              .split(/\r?\n/)
+              .map((b: string) => b.trim())
+              .filter(Boolean);
+            const currentBranch: string | undefined = data.currentBranch;
+            setSites(prev => prev.map(p => {
+              if (p.id !== s.id) return p;
+              // Set activeBranch to currentBranch if it exists in the branch list
+              const active = currentBranch && branches.includes(currentBranch)
+                ? currentBranch
+                : (p.activeBranch && branches.includes(p.activeBranch) ? p.activeBranch : branches[0] || '');
+              return { ...p, branches, activeBranch: active };
+            }));
+          }
+        } catch {
+          // ignore per-site errors during initial load
+        }
+      })();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleAction(id: string, action: 'pull' | 'rebase') {
     setBusy(prev => ({ ...prev, [id]: true }));
