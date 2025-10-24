@@ -232,17 +232,16 @@ export default function Home() {
         setSites(prev => prev.map(s => s.id === siteId ? { ...s, commandOutput: renameData.stdout } : s));
       } else {
         // If folder doesn't exist, do a bare clone
-        const url = `https://afafilo:${process.env.GITHUBTOKEN}@github.com/afafilo/${target}.git`;
         const resp = await fetch('/api/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cmd: 'clonebare', cwd: site.folderPath, url, target }),
+          body: JSON.stringify({ cmd: 'clonebare', cwd: site.folderPath, target }),
         });
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
           throw new Error(data.error || 'Failed to clone bare repository');
         }
-        setSites(prev => prev.map(s => s.id === siteId ? { ...s, commandOutput: data.stdout || `Cloned bare repo ${url} -> ${target}` } : s));
+        setSites(prev => prev.map(s => s.id === siteId ? { ...s, commandOutput: data.stdout || `Cloned bare repo ${target}` } : s));
       }
     } catch (err) {
       console.error(err);
