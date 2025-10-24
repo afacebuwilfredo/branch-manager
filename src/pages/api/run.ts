@@ -446,6 +446,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       }
     }
 
+    // For git status, check if we have a valid git working tree first
+    if (cmd === 'status') {
+      // Ensure the directory is marked as safe for Git
+      await ensureSafeDirectory(cwd);
+
+      // Check if we have a valid git repository with a working tree
+      const gitDirCheck = await execPromise('git rev-parse --git-dir');
+      const workTreeCheck = await execPromise('git rev-parse --show-toplevel');
+      
+      if (gitDirCheck.error || workTreeCheck.error) {
+        return res.status(200).json({ 
+          ok: true, 
+          stdout: 'Not a git repository or no working tree' 
+        });
+      }
+    }
+
     // default handler for other commands
     const result = await execPromise(shellCmd);
     if (result.error) {
