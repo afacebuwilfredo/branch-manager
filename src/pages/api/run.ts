@@ -19,9 +19,13 @@ const COMMANDS: Record<string, string> = (() => {
     whoami: isWin ? "whoami" : "whoami",
     pwd: isWin ? "cd" : "pwd",
     list: isWin ? "dir" : "ls -la",
+    // Open in File Explorer (Windows) or default file manager (Unix)
+    explorer: isWin ? "explorer" : "xdg-open",
+    // Open in VS Code
+    code: "code",
     // show both local and remote branches, removing 'origin/' prefix for cleaner display
     branches: 'git branch -a --format=%(refname:short)',
-  // git commands handled by custom logic in handler
+    // git commands handled by custom logic in handler
     checkout: 'git checkout',
     forcepull: 'git fetch origin && git reset --hard',  // actual branch handling in handler
     // show status with branch info and short format
@@ -30,8 +34,10 @@ const COMMANDS: Record<string, string> = (() => {
     remotes: 'git remote -v',
     // set remote URL
     setremote: 'git remote set-url origin',  // URL will be appended in handler
-  // clone a bare repository
-    clonebare: 'git clone --bare',
+    // clone a bare repository
+  clonebare: 'git clone --bare',
+  // generic clone (frontend provides the URL and target)
+  clone: 'git clone',
     // remove git tracking (using attrib on Windows to handle readonly files)
     deletegit: process.platform === "win32" ? "attrib -r -h .git\\* /s && rmdir /s /q .git" : "rm -rf .git",
     // rename folder to .git (handled in custom logic)
@@ -383,6 +389,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
       }
     }
 
+    if (cmd === 'clone') {
+      // Ensure the directory is marked as safe for Git
+      await ensureSafeDirectory(cwd);
+
+      const url = req.body && typeof req.body.url === 'string' ? String(req.body.url).trim() : '';
+      const target = req.body && typeof req.body.target === 'string' ? String(req.body.target).trim() : '';
+      if (!url) return res.status(400).json({ ok: false, error: 'Missing clone URL' });
+      if (!target) return res.status(400).json({ ok: false, error: 'Missing target folder name' });
+
+      // Basic validation: must look like an http(s) URL or git@ style URL
+      const isHttp = /^https?:\/\/.+/.test(url);
+      const isGitAt = /^git@.+:.+/.test(url);
+      if (!isHttp && !isGitAt) {
+        return res.status(400).json({ ok: false, error: 'Invalid clone URL format' });
+      }
+
+      const pfs = fs.promises as typeof fs.promises;
+      const targetPath = path.resolve(cwd, target);
+
+      // refuse if target exists
+      const exists = await pfs.stat(targetPath).then(() => true).catch(() => false);
+      if (exists) {
+        return res.status(400).json({ ok: false, error: `Target already exists: ${targetPath}` });
+      }
+
+      // run git clone <url> <targetPath>
+      const safeUrl = url.replace(/"/g, '\\"');
+      const safeTarget = targetPath.replace(/"/g, '\\"');
+      const cmdLine = `git clone "${safeUrl}" "${safeTarget}"`;
+      const r = await execPromise(cmdLine);
+      if (r.error) {
+        return res.status(500).json({ ok: false, error: `Clone failed: ${r.error}`, stderr: r.stderr });
+      }
+
+      return res.status(200).json({ ok: true, stdout: r.stdout || `Cloned ${url} to ${targetPath}` });
+    }
+
     if (cmd === 'renamegit') {
       try {
         // Get the current directory name
@@ -422,8 +465,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         // Attempt the rename
         try {
           await fs.promises.rename(cwd, targetPath);
-        } catch (renameErr) {
-          // If the rename fails, try a fallback copy-and-delete approach
+        } catch (err) {
+          // If the rename fails, log and try a fallback copy-and-delete approach
+          console.warn('rename failed, attempting fallback:', err);
           if (process.platform === 'win32') {
             // Windows fallback using robocopy (preserves attributes)
             await execPromise(`robocopy "${cwd}" "${targetPath}" /E /MOVE`);
@@ -471,7 +515,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
     }
 
     // default handler for other commands
-    const result = await execPromise(shellCmd);
+    const args = (req.body.args || []) as string[];
+    const fullCmd = `${shellCmd} ${args.map((arg: string) => `"${arg}"`).join(' ')}`.trim();
+    const result = await execPromise(fullCmd);
     if (result.error) {
       return res.status(500).json({ ok: false, error: `Command failed: ${result.error}`, stderr: result.stderr || undefined });
     }

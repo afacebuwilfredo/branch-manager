@@ -1,6 +1,6 @@
 // pages/index.tsx
-import { useState, useEffect } from "react";
-import { initialSites } from "../lib/sites";
+import { useState, useEffect, useCallback } from "react";
+import { initialSites, Site } from "../lib/sites";
 import path from "path";
 
 export default function Home() {
@@ -26,6 +26,9 @@ export default function Home() {
       user.toLowerCase().includes(inputLower)
     );
   };
+
+  // Track which sites have had their branches loaded
+  const [loadedBranches, setLoadedBranches] = useState<Set<string>>(new Set());
 
   const filteredSites = sites
     .filter(site => {
@@ -54,6 +57,48 @@ export default function Home() {
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
   );
+
+  // Function to load branches for a single site
+  const loadBranchesForSite = useCallback(async (site: Site) => {
+    if (loadedBranches.has(site.id)) return; // Skip if already loaded
+
+    try {
+      const resp = await fetch('/api/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cmd: 'branches', cwd: site.folderPath }),
+      });
+      const data = await resp.json();
+      if (resp.ok && data.ok) {
+        const branches = (data.stdout || '')
+          .split(/\r?\n/)
+          .map((b: string) => b.trim())
+          .filter(Boolean);
+        const currentBranch: string | undefined = data.currentBranch;
+        
+        setSites(prev => prev.map(p => {
+          if (p.id !== site.id) return p;
+          const active = currentBranch && branches.includes(currentBranch)
+            ? currentBranch
+            : (p.activeBranch && branches.includes(p.activeBranch) ? p.activeBranch : branches[0] || '');
+          return { ...p, branches, activeBranch: active };
+        }));
+        
+        setLoadedBranches(prev => new Set([...prev, site.id]));
+      }
+    } catch (err) {
+      console.error(`Failed to load branches for ${site.name}:`, err);
+    }
+  }, [loadedBranches]);
+
+  // Load branches for visible sites only
+  useEffect(() => {
+    paginatedSites.forEach(site => {
+      if (!loadedBranches.has(site.id)) {
+       loadBranchesForSite(site);
+      }
+    });
+  }, [paginatedSites, loadedBranches, loadBranchesForSite]);
 
   async function handleCommand(id: string, cmd: 'branches' | 'folders' | 'status' | 'forcepull' | 'remotes' | 'deletegit') {
     setBusy(prev => ({ ...prev, [id]: true }));
@@ -97,41 +142,6 @@ export default function Home() {
       setBusy(prev => ({ ...prev, [id]: false }));
     }
   }
-
-  // Optionally pre-load branches for all sites on mount (non-blocking)
-  useEffect(() => {
-    sites.forEach(s => {
-      // don't block UI; fire-and-forget
-      (async () => {
-        try {
-          const resp = await fetch('/api/run', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ cmd: 'branches', cwd: s.folderPath }),
-          });
-          const data = await resp.json();
-          if (resp.ok && data.ok) {
-            const branches = (data.stdout || '')
-              .split(/\r?\n/)
-              .map((b: string) => b.trim())
-              .filter(Boolean);
-            const currentBranch: string | undefined = data.currentBranch;
-            setSites(prev => prev.map(p => {
-              if (p.id !== s.id) return p;
-              // Set activeBranch to currentBranch if it exists in the branch list
-              const active = currentBranch && branches.includes(currentBranch)
-                ? currentBranch
-                : (p.activeBranch && branches.includes(p.activeBranch) ? p.activeBranch : branches[0] || '');
-              return { ...p, branches, activeBranch: active };
-            }));
-          }
-        } catch {
-          // ignore per-site errors during initial load
-        }
-      })();
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function handleAction(id: string, action: 'pull' | 'rebase') {
     setBusy(prev => ({ ...prev, [id]: true }));
@@ -437,8 +447,123 @@ export default function Home() {
                       {site.name}
                     </a>
                     <div className="small">{site.url}</div>
-                    <div className="small">
+                    <div className="small" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       Server: <strong>{site.server}</strong> • Path: <code>{site.folderPath}</code>
+                      <button
+                        className="btn"
+                        onClick={async () => {
+                          try {
+                            const resp = await fetch('/api/run', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ cmd: 'explorer', args: ['.'], cwd: site.folderPath }),
+                            });
+                            if (!resp.ok) throw new Error('Failed to open explorer');
+                          } catch (err) {
+                            console.error(err);
+                            alert('Failed to open in File Explorer');
+                          }
+                        }}
+                        style={{ padding: '2px 6px', fontSize: '12px' }}
+                        title="Open in File Explorer"
+                      >
+                        OPEN IN FOLDER
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={async () => {
+                          try {
+                            const resp = await fetch('/api/run', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ cmd: 'code', args: ['.'], cwd: site.folderPath }),
+                            });
+                            if (!resp.ok) throw new Error('Failed to open in VS Code');
+                          } catch (err) {
+                            console.error(err);
+                            alert('Failed to open in VS Code');
+                          }
+                        }}
+                        style={{ padding: '2px 6px', fontSize: '12px' }}
+                        title="Open in VS Code"
+                      >
+                        OPEN IN VS CODE
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          // Extract repository name from folderPath
+                          const repoName = site.name.replace(/\.cenix$/, '');
+                          const githubUrl = `https://github.com/afafilo/${repoName}`;
+                          window.open(githubUrl, '_blank');
+                        }}
+                        style={{ 
+                          padding: '2px 6px', 
+                          fontSize: '12px',
+                          backgroundColor: '#24292e',
+                          color: 'white'
+                        }}
+                        title="Open GitHub Repository"
+                      >
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <svg height="16" viewBox="0 0 16 16" width="16" style={{ fill: 'currentColor' }}>
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"></path>
+                          </svg>
+                          GitHub
+                        </span>
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={async () => {
+                          setBusy(prev => ({ ...prev, [site.id]: true }));
+                          try {
+                            // get remotes
+                            const resp = await fetch('/api/run', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ cmd: 'remotes', cwd: site.folderPath }),
+                            });
+                            const data = await resp.json();
+                            if (!resp.ok || !data.ok) throw new Error(data.error || 'Failed to get remotes');
+
+                            const out = (data.stdout || '') as string;
+                            // parse first URL (https or git@ style)
+                            const lines = out.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                            let foundUrl = '';
+                            for (const line of lines) {
+                              const m = line.match(/(https?:\/\/[^\s]+|git@[^\s]+)/);
+                              if (m) { foundUrl = m[1]; break; }
+                            }
+                            if (!foundUrl) throw new Error('No remote URL found');
+
+                            // derive repo name
+                            const repoName = (foundUrl.split('/').pop() || '').replace(/\.git$/, '');
+                            const confirmMsg = `Clone ${foundUrl} into folder \"${repoName}\" under ${site.folderPath}?`;
+                            if (!window.confirm(confirmMsg)) return;
+
+                            const cloneResp = await fetch('/api/run', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ cmd: 'clone', cwd: site.folderPath, url: foundUrl, target: repoName }),
+                            });
+                            const cloneData = await cloneResp.json();
+                            if (!cloneResp.ok || !cloneData.ok) {
+                              throw new Error(cloneData.error || 'Clone failed');
+                            }
+                            setSites(prev => prev.map(s => s.id === site.id ? { ...s, commandOutput: cloneData.stdout || `Cloned ${repoName}` } : s));
+                          } catch (err) {
+                            console.error(err);
+                            alert(err instanceof Error ? err.message : 'Clone failed');
+                          } finally {
+                            setBusy(prev => ({ ...prev, [site.id]: false }));
+                          }
+                        }}
+                        disabled={busy[site.id]}
+                        style={{ padding: '2px 6px', fontSize: '12px' }}
+                        title="Clone repository from configured remote into this folder"
+                      >
+                        CLONE FROM REMOTE
+                      </button>
                     </div>
                   </div>
                   <div className="small">
