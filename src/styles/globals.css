@@ -1,9 +1,6 @@
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
-  font-family: system-ui, -apple-system, sans-serif;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 header {
   margin-bottom: 2rem;
