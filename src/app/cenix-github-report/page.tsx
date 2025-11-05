@@ -37,6 +37,7 @@ export default function CenixGitHubReport() {
   const [repositories, setRepositories] = useState<Repository[]>([]);
   const [selectedRepos, setSelectedRepos] = useState<Set<string>>(new Set());
   const [pullAllRepos, setPullAllRepos] = useState(false);
+  const [repoListVisible, setRepoListVisible] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Report state
@@ -65,9 +66,9 @@ export default function CenixGitHubReport() {
         } else if (res.status === 401) {
           setUser(null);
         }
-      } catch (err) {
-        setError('Failed to check authentication status');
-      } finally {
+      } catch {
+          setError('Failed to check authentication status');
+        } finally {
         setLoading(false);
       }
     }
@@ -152,6 +153,9 @@ export default function CenixGitHubReport() {
   // Handle CSV export
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ fetched: number; total?: number } | null>(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [graphData, setGraphData] = useState<{ member: string; contributions: number }[] | null>(null);
+  const [showGraph, setShowGraph] = useState(false);
 
   function downloadCsvFromRows(rows: ContributionRow[], filename?: string) {
     if (!rows || rows.length === 0) return;
@@ -300,43 +304,60 @@ export default function CenixGitHubReport() {
         <div className="space-y-6 mb-8">
           {/* Repository selection */}
           <div className="bg-gray-50 p-4 rounded">
-            <div className="mb-4">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={pullAllRepos}
-                  onChange={(e) => handlePullAllToggle(e.target.checked)}
-                  className="mr-2"
-                />
-                Pull all repositories
-              </label>
-            </div>
-
-            <div className="mb-4">
-              <input
-                type="text"
-                placeholder="Search repositories..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full p-2 border rounded"
-                disabled={pullAllRepos}
-              />
-            </div>
-
-            <div className="max-h-60 overflow-y-auto border rounded bg-white">
-              {filteredRepos.map((repo) => (
-                <label key={repo.id} className="flex items-center p-2 hover:bg-gray-50">
+            <div className="mb-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={selectedRepos.has(repo.nameWithOwner)}
-                    onChange={() => handleRepoToggle(repo.nameWithOwner)}
-                    disabled={pullAllRepos}
-                    className="mr-2"
+                    checked={pullAllRepos}
+                    onChange={(e) => handlePullAllToggle(e.target.checked)}
+                    className="mr-1"
                   />
-                  {repo.nameWithOwner}
+                  <span className="text-sm">Pull all repositories</span>
                 </label>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setRepoListVisible(v => !v)}
+                  className="text-sm px-2 py-1 border rounded bg-white hover:bg-gray-100"
+                >
+                  {repoListVisible ? 'Hide list' : 'Show list'}
+                </button>
+              </div>
+
+              <div style={{ minWidth: 220 }}>
+                <input
+                  type="text"
+                  placeholder="Search repositories..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full p-2 border rounded"
+                  disabled={pullAllRepos || !repoListVisible}
+                />
+              </div>
             </div>
+
+            {repoListVisible && (
+              <div className="max-h-60 overflow-y-auto border rounded bg-white p-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                  {filteredRepos.map((repo) => (
+                    <label
+                      key={repo.id}
+                      className="flex items-center gap-2 p-2 hover:bg-gray-50 rounded"
+                      style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedRepos.has(repo.nameWithOwner)}
+                        onChange={() => handleRepoToggle(repo.nameWithOwner)}
+                        disabled={pullAllRepos}
+                        className="flex-shrink-0"
+                      />
+                      <span className="truncate">{repo.nameWithOwner}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Date range */}
@@ -386,6 +407,63 @@ export default function CenixGitHubReport() {
                 >
                   {exporting ? 'Exporting...' : 'Export all CSV'}
                 </button>
+                <button
+                  onClick={async () => {
+                    if (showGraph) {
+                      setShowGraph(false);
+                      return;
+                    }
+                    // Generate graph data
+                    setGraphLoading(true);
+                    setShowGraph(true);
+                    try {
+                      // reuse pagination to fetch all pages
+                      const perPage = reportData.perPage;
+                      const total = reportData.totalRows;
+                      const pages = Math.max(1, Math.ceil(total / perPage));
+                      const memberMap = new Map<string, number>();
+
+                      // include current page rows
+                      if (reportData.rows && reportData.rows.length > 0) {
+                        for (const r of reportData.rows) {
+                          memberMap.set(r.member, (memberMap.get(r.member) ?? 0) + r.contributions);
+                        }
+                      }
+
+                      for (let p = 1; p <= pages; p++) {
+                        if (p === reportData.page) continue;
+                        const resp = await fetch('/api/github/report', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ repoFullNames: Array.from(selectedRepos), startDate, endDate, page: p, perPage })
+                        });
+                        if (!resp.ok) {
+                          const text = await resp.text();
+                          throw new Error(text || `Failed to fetch page ${p}`);
+                        }
+                        const json: ReportResponse = await resp.json();
+                        for (const r of json.rows) {
+                          memberMap.set(r.member, (memberMap.get(r.member) ?? 0) + r.contributions);
+                        }
+                      }
+
+                      // Convert to array and sort
+                      const arr = Array.from(memberMap.entries()).map(([member, contributions]) => ({ member, contributions }));
+                      arr.sort((a, b) => b.contributions - a.contributions);
+                      // limit to top 25 for chart
+                      setGraphData(arr.slice(0, 25));
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : 'Failed to build graph');
+                      setShowGraph(false);
+                    } finally {
+                      setGraphLoading(false);
+                    }
+                  }}
+                  disabled={graphLoading}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {showGraph ? (graphLoading ? 'Loading...' : 'Hide graph') : (graphLoading ? 'Loading...' : 'Graph report')}
+                </button>
                 {exportProgress && (
                   <div style={{ fontSize: 12, color: '#333' }}>
                     Exported {exportProgress.fetched}{exportProgress.total ? ` / ${exportProgress.total}` : ''}
@@ -399,23 +477,23 @@ export default function CenixGitHubReport() {
         {/* Results table */}
         {reportData && (
           <div>
-            <div className="bg-white shadow rounded">
-              <table className="min-w-full">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-2 text-left">Repository</th>
-                    <th className="px-4 py-2 text-left">Member</th>
-                    <th className="px-4 py-2 text-left">Date</th>
-                    <th className="px-4 py-2 text-right">Contributions</th>
+            <div className="bg-white shadow rounded overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repository</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Contributions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="bg-white divide-y divide-gray-200">
                   {reportData.rows.map((row, i) => (
-                    <tr key={i} className="border-t">
-                      <td className="px-4 py-2">{row.repository}</td>
-                      <td className="px-4 py-2">{row.member}</td>
-                      <td className="px-4 py-2">{row.date}</td>
-                      <td className="px-4 py-2 text-right">{row.contributions}</td>
+                    <tr key={i} className={i % 2 === 0 ? 'even:bg-gray-50 hover:bg-gray-100' : 'hover:bg-gray-100'}>
+                      <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{row.repository}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{row.member}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{row.date}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.contributions}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -446,7 +524,49 @@ export default function CenixGitHubReport() {
             )}
           </div>
         )}
+
+        {/* Graph area */}
+        {showGraph && (
+          <div className="mt-6 bg-white p-4 rounded shadow">
+            <h3 className="text-lg font-medium mb-3">Contributions by member (top 25)</h3>
+            {graphLoading && <div className="text-sm text-gray-600">Loading graph...</div>}
+            {!graphLoading && graphData && graphData.length === 0 && (
+              <div className="text-sm text-gray-600">No data to display.</div>
+            )}
+            {!graphLoading && graphData && graphData.length > 0 && (
+              <div style={{ overflowX: 'auto' }}>
+                <BarChart data={graphData} width={900} barHeight={28} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+
+function BarChart({ data, width = 600, barHeight = 24 }: { data: { member: string; contributions: number }[]; width?: number; barHeight?: number }) {
+  const paddingLeft = 220; // label column width
+  const gap = 8;
+  const chartWidth = width;
+  const chartInnerWidth = Math.max(200, chartWidth - paddingLeft - 24);
+  const height = data.length * (barHeight + gap) + 24;
+  const max = Math.max(1, ...data.map(d => d.contributions));
+
+  return (
+    <svg width={chartWidth} height={height} viewBox={`0 0 ${chartWidth+10} ${height}`} role="img" aria-label="Contributions bar chart">
+      {data.map((d, i) => {
+        const y = 12 + i * (barHeight + gap);
+        const w = Math.round((d.contributions / max) * chartInnerWidth);
+        return (
+          <g key={d.member}>
+            <text x={8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{d.member}</text>
+            <rect x={paddingLeft} y={y} width={chartInnerWidth} height={barHeight} fill="#f1f5f9" rx={4} />
+            <rect x={paddingLeft} y={y} width={w} height={barHeight} fill="#4f46e5" rx={4} />
+            <text x={paddingLeft + chartInnerWidth + 8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{d.contributions}</text>
+          </g>
+        );
+      })}
+    </svg>
   );
 }
