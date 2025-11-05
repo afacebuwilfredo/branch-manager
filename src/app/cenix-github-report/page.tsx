@@ -150,31 +150,93 @@ export default function CenixGitHubReport() {
   }
 
   // Handle CSV export
-  function exportToCsv() {
-    if (!reportData?.rows.length) return;
-    
+  const [exporting, setExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState<{ fetched: number; total?: number } | null>(null);
+
+  function downloadCsvFromRows(rows: ContributionRow[], filename?: string) {
+    if (!rows || rows.length === 0) return;
     const headers = ['Repository', 'Member', 'Date', 'Contributions'];
-    const csvData = reportData.rows.map(row => [
+    const csvData = rows.map(row => [
       row.repository,
       row.member,
       row.date,
-      row.contributions
+      String(row.contributions)
     ]);
-    
+
     const csvContent = [
       headers.join(','),
-      ...csvData.map(row => row.join(','))
+      ...csvData.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
     ].join('\n');
-    
+
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `github-contributions-${startDate}-${endDate}.csv`;
+    a.download = filename ?? `github-contributions-${startDate}-${endDate}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
+  }
+
+  // Export only currently displayed rows (current page)
+  function exportCurrentPageCsv() {
+    if (!reportData?.rows.length) return;
+    downloadCsvFromRows(reportData.rows);
+  }
+
+  // Export all pages by fetching all pages from server and concatenating rows
+  async function exportAllPagesCsv() {
+    if (!reportData) return;
+    setExporting(true);
+    setExportProgress({ fetched: 0, total: reportData.totalRows });
+    try {
+      const perPage = reportData.perPage;
+      const total = reportData.totalRows;
+      const pages = Math.max(1, Math.ceil(total / perPage));
+      const allRows: ContributionRow[] = [];
+
+      // start with current page rows if available
+      if (reportData.rows && reportData.rows.length > 0) {
+        allRows.push(...reportData.rows);
+        setExportProgress({ fetched: allRows.length, total });
+      }
+
+      for (let p = 1; p <= pages; p++) {
+        // skip page 1 if we already have it
+        if (p === reportData.page) continue;
+
+        const resp = await fetch('/api/github/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoFullNames: Array.from(selectedRepos),
+            startDate,
+            endDate,
+            page: p,
+            perPage
+          })
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(text || `Failed to fetch page ${p}`);
+        }
+
+        const json: ReportResponse = await resp.json();
+        if (json.rows && json.rows.length > 0) {
+          allRows.push(...json.rows);
+        }
+        setExportProgress({ fetched: allRows.length, total });
+      }
+
+      downloadCsvFromRows(allRows, `github-contributions-all-${startDate}-${endDate}.csv`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export all pages');
+    } finally {
+      setExporting(false);
+      setExportProgress(null);
+    }
   }
 
   // Login handler
@@ -310,12 +372,26 @@ export default function CenixGitHubReport() {
             </button>
             
             {reportData && (
-              <button
-                onClick={exportToCsv}
-                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
-              >
-                Export to CSV
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <button
+                  onClick={exportCurrentPageCsv}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                >
+                  Export page CSV
+                </button>
+                <button
+                  onClick={exportAllPagesCsv}
+                  disabled={exporting}
+                  className="px-4 py-2 bg-green-700 text-white rounded hover:bg-green-800 disabled:opacity-50"
+                >
+                  {exporting ? 'Exporting...' : 'Export all CSV'}
+                </button>
+                {exportProgress && (
+                  <div style={{ fontSize: 12, color: '#333' }}>
+                    Exported {exportProgress.fetched}{exportProgress.total ? ` / ${exportProgress.total}` : ''}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
