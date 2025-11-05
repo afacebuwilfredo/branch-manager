@@ -9,19 +9,18 @@ const cache = new LRUCache<string, CacheData>({
   ttl: 1000 * 60 * 60, // 1 hour TTL
 });
 
-// GraphQL query to get contributions by user in a repository
+// GraphQL query to get contributions by user in a repository, paginated with cursor
 const CONTRIBUTIONS_QUERY = `
-  query ContributionsCollection($owner: String!, $name: String!, $from: GitTimestamp!, $to: GitTimestamp!) {
+  query ContributionsCollection($owner: String!, $name: String!, $from: GitTimestamp!, $to: GitTimestamp!, $after: String) {
     repository(owner: $owner, name: $name) {
       defaultBranchRef {
         target {
           ... on Commit {
-            history(first: 100, since: $from, until: $to) {
+            history(first: 100, since: $from, until: $to, after: $after) {
+              pageInfo { hasNextPage endCursor }
               nodes {
                 author {
-                  user {
-                    login
-                  }
+                  user { login }
                   email
                   name
                 }
@@ -57,17 +56,23 @@ interface CommitNode {
   committedDate: string;
 }
 
+interface HistoryPage {
+  pageInfo: {
+    hasNextPage: boolean;
+    endCursor?: string | null;
+  };
+  nodes: CommitNode[];
+}
+
 interface ContributionsResponse {
   repository: {
     defaultBranchRef: {
       target: {
-        history: {
-          nodes: CommitNode[];
-        };
+        history: HistoryPage;
       };
     };
   };
-};
+}
 
 type ContributionRow = {
   repository: string;
@@ -101,37 +106,60 @@ async function fetchContributions(
 
     const formattedTo = toDate.toISOString().replace('.000Z', 'Z');
 
-    const res = await fetch('https://api.github.com/graphql', {
-      method: 'POST',
-      headers: {
-        'Authorization': `bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query: CONTRIBUTIONS_QUERY,
-        variables: {
-          owner,
-          name,
-          from: formattedFrom,
-          to: formattedTo,
+    // Paginate through commit history using 'after' cursor
+    let after: string | null = null;
+    const allNodes: CommitNode[] = [];
+    const maxPages = 50; // safety cap to avoid infinite loops
+    let pageCount = 0;
+
+    while (pageCount < maxPages) {
+      pageCount += 1;
+
+      const res = await fetch('https://api.github.com/graphql', {
+        method: 'POST',
+        headers: {
+          'Authorization': `bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-      }),
-    });
+        body: JSON.stringify({
+          query: CONTRIBUTIONS_QUERY,
+          variables: {
+            owner,
+            name,
+            from: formattedFrom,
+            to: formattedTo,
+            after,
+          },
+        }),
+      });
 
-    if (!res.ok) {
-      throw new Error(`GitHub API error: ${await res.text()}`);
-    }
+      if (!res.ok) {
+        throw new Error(`GitHub API error: ${await res.text()}`);
+      }
 
-    const data = await res.json() as GitHubGraphQLResponse<ContributionsResponse>;
-    
-    if (data.errors) {
-      throw new Error(data.errors.map(e => e.message).join('; '));
+      const data = await res.json() as GitHubGraphQLResponse<ContributionsResponse>;
+      if (data.errors) {
+        throw new Error(data.errors.map(e => e.message).join('; '));
+      }
+
+      const history = data.data?.repository?.defaultBranchRef?.target?.history;
+      const nodes = history?.nodes ?? [];
+      allNodes.push(...nodes);
+
+      const pageInfo = history?.pageInfo;
+      if (pageInfo && pageInfo.hasNextPage && pageInfo.endCursor) {
+        after = pageInfo.endCursor;
+        // short delay to be gentle on rate limits
+        await new Promise((r) => setTimeout(r, 200));
+        continue;
+      }
+
+      break;
     }
 
     const contributions = new Map<string, Map<string, number>>();
-    const nodes = data.data?.repository?.defaultBranchRef?.target?.history?.nodes ?? [];
 
-    nodes.forEach((commit: CommitNode) => {
+    allNodes.forEach((commit: CommitNode) => {
       const author = commit.author.user?.login ?? commit.author.email ?? commit.author.name ?? 'unknown';
       const date = commit.committedDate.split('T')[0];
 
