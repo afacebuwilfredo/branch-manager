@@ -6,14 +6,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const useLocalToken = process.env.USE_LOCAL_TOKEN === 'true';
-  const localGithubToken = process.env.LOCAL_GITHUB_TOKEN || process.env.GITHUBTOKEN;
+  const useLocalToken = process.env.GITHUBTOKEN === 'true';
+  const localGithubToken = process.env.GITHUB_TOKEN || process.env.GITHUBTOKEN;
   const token = useLocalToken && localGithubToken ? localGithubToken : req.cookies['gh_token'];
 
   if (!token) {
     return res.status(401).json({ error: 'No token; login required' });
   }
-
+ 
   try {
     const response = await fetch('https://api.github.com/graphql', {
       method: 'POST',
