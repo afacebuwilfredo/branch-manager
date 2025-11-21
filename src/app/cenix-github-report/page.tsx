@@ -3,6 +3,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 
+const CHART_COLORS = [
+  '#4f46e5', '#16a34a', '#f97316', '#0ea5e9', '#ec4899',
+  '#22c55e', '#f59e0b', '#6366f1', '#2dd4bf', '#a855f7',
+  '#ef4444', '#14b8a6', '#8b5cf6', '#84cc16', '#d946ef'
+];
+
 type User = {
   login: string;
   avatarUrl?: string;
@@ -23,10 +29,23 @@ type ContributionRow = {
 };
 
 type GraphMetric = 'contributions' | 'addedLines' | 'removedLines';
+type GraphType = 'bar' | 'line' | 'pie';
 
 type SortColumn = 'repository' | 'member' | 'date' | 'contributions' | 'addedLines' | 'removedLines';
 type SortDirection = 'asc' | 'desc';
 type NumericSortColumn = Extract<SortColumn, 'contributions' | 'addedLines' | 'removedLines'>;
+
+type LineSeriesPoint = {
+  date: string;
+  contributions: number;
+  addedLines: number;
+  removedLines: number;
+};
+
+type MemberLineSeries = {
+  member: string;
+  points: LineSeriesPoint[];
+};
 
 type ReportResponse = {
   totalRows: number;
@@ -169,8 +188,12 @@ export default function CenixGitHubReport() {
   const [graphData, setGraphData] = useState<
     { member: string; contributions: number; addedLines: number; removedLines: number }[] | null
   >(null);
+  const [lineSeries, setLineSeries] = useState<MemberLineSeries[] | null>(null);
   const [showGraph, setShowGraph] = useState(false);
   const [graphMetric, setGraphMetric] = useState<GraphMetric>('contributions');
+  const [graphType, setGraphType] = useState<GraphType>('bar');
+  const [showAxes, setShowAxes] = useState(true);
+  const [visibleMembers, setVisibleMembers] = useState<Set<string>>(new Set());
 
   const metricLabels: Record<GraphMetric, string> = {
     contributions: 'Commits',
@@ -178,6 +201,11 @@ export default function CenixGitHubReport() {
     removedLines: 'Removed Lines'
   };
   const metricOptions: GraphMetric[] = ['contributions', 'addedLines', 'removedLines'];
+  const graphTypeOptions: { value: GraphType; label: string }[] = [
+    { value: 'bar', label: 'Bar' },
+    { value: 'line', label: 'Line' },
+    { value: 'pie', label: 'Pie' }
+  ];
 
   const sortRows = useCallback((rows: ContributionRow[]) => {
     const rowsCopy = [...rows];
@@ -214,6 +242,63 @@ export default function CenixGitHubReport() {
     return copy.slice(0, 25);
   }, [graphData, graphMetric]);
 
+  const allMembers = useMemo(() => {
+    const unique = new Set<string>();
+    graphData?.forEach(row => unique.add(row.member));
+    lineSeries?.forEach(series => unique.add(series.member));
+    return Array.from(unique);
+  }, [graphData, lineSeries]);
+
+  useEffect(() => {
+    if (!allMembers.length) return;
+    setVisibleMembers((prev) => {
+      if (!prev || prev.size === 0) {
+        return new Set(allMembers);
+      }
+      const updated = new Set<string>();
+      allMembers.forEach(member => {
+        if (prev.has(member)) {
+          updated.add(member);
+        }
+      });
+      if (updated.size === 0) {
+        return new Set(allMembers);
+      }
+      return updated;
+    });
+  }, [allMembers]);
+
+  const activeMembers = useMemo(() => {
+    if (!allMembers.length) return new Set<string>();
+    if (!visibleMembers || visibleMembers.size === 0) {
+      return new Set(allMembers);
+    }
+    return visibleMembers;
+  }, [allMembers, visibleMembers]);
+
+  const filteredChartData = useMemo(() => {
+    if (!chartData.length) return [];
+    const filtered = chartData.filter(row => activeMembers.has(row.member));
+    if (filtered.length === 0) {
+      return chartData;
+    }
+    return filtered;
+  }, [chartData, activeMembers]);
+
+  const baseLineSeries = useMemo(() => {
+    if (!lineSeries) return [];
+    return lineSeries.map(series => ({
+      member: series.member,
+      points: [...series.points].sort((a, b) => a.date.localeCompare(b.date))
+    }));
+  }, [lineSeries]);
+
+  const filteredLineSeries = useMemo(() => {
+    if (!baseLineSeries.length) return [];
+    const filtered = baseLineSeries.filter(series => activeMembers.has(series.member));
+    return filtered.length > 0 ? filtered : baseLineSeries;
+  }, [baseLineSeries, activeMembers]);
+
   function handleSort(column: SortColumn) {
     setSortConfig((prev) => {
       if (prev.column === column) {
@@ -247,6 +332,33 @@ export default function CenixGitHubReport() {
       </button>
     );
   };
+
+  function handleToggleMember(member: string) {
+    setVisibleMembers((prev) => {
+      const current = prev ? new Set(prev) : new Set<string>();
+      const isSelected = current.has(member);
+      if (isSelected) {
+        if (current.size === 1) {
+          return current;
+        }
+        current.delete(member);
+        return current;
+      }
+      current.add(member);
+      return current;
+    });
+  }
+
+  function handleSelectAllMembers() {
+    if (!allMembers.length) return;
+    setVisibleMembers(new Set(allMembers));
+  }
+
+  function handleClearMembers() {
+    if (!allMembers.length) return;
+    const firstMember = allMembers[0];
+    setVisibleMembers(new Set([firstMember]));
+  }
 
   function downloadCsvFromRows(rows: ContributionRow[], filename?: string) {
     if (!rows || rows.length === 0) return;
@@ -518,6 +630,13 @@ export default function CenixGitHubReport() {
                         string,
                         { contributions: number; addedLines: number; removedLines: number }
                       >();
+                      const timelineMap = new Map<
+                        string,
+                        Map<
+                          string,
+                          { contributions: number; addedLines: number; removedLines: number }
+                        >
+                      >();
 
                       const accumulateRow = (r: ContributionRow) => {
                         const existing = memberMap.get(r.member) ?? {
@@ -529,6 +648,18 @@ export default function CenixGitHubReport() {
                         existing.addedLines += r.addedLines;
                         existing.removedLines += r.removedLines;
                         memberMap.set(r.member, existing);
+
+                        const timeline = timelineMap.get(r.member) ?? new Map();
+                        const dayStats = timeline.get(r.date) ?? {
+                          contributions: 0,
+                          addedLines: 0,
+                          removedLines: 0
+                        };
+                        dayStats.contributions += r.contributions;
+                        dayStats.addedLines += r.addedLines;
+                        dayStats.removedLines += r.removedLines;
+                        timeline.set(r.date, dayStats);
+                        timelineMap.set(r.member, timeline);
                       };
 
                       // include current page rows
@@ -562,6 +693,19 @@ export default function CenixGitHubReport() {
                         removedLines: metrics.removedLines
                       }));
                       setGraphData(arr);
+
+                      const lines = Array.from(timelineMap.entries()).map(([member, datesMap]) => ({
+                        member,
+                        points: Array.from(datesMap.entries())
+                          .map(([date, stats]) => ({
+                            date,
+                            contributions: stats.contributions,
+                            addedLines: stats.addedLines,
+                            removedLines: stats.removedLines
+                          }))
+                          .sort((a, b) => a.date.localeCompare(b.date))
+                      }));
+                      setLineSeries(lines);
                     } catch (err) {
                       setError(err instanceof Error ? err.message : 'Failed to build graph');
                       setShowGraph(false);
@@ -656,39 +800,124 @@ export default function CenixGitHubReport() {
           <div className="mt-6 bg-white p-4 rounded shadow">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <h3 className="text-lg font-medium">Top members by {metricLabels[graphMetric]}</h3>
-              <div className="flex flex-wrap items-center gap-2">
-                {metricOptions.map((option) => {
-                  const isActive = graphMetric === option;
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => setGraphMetric(option)}
-                      disabled={graphLoading}
-                      className={`rounded border px-3 py-1 text-sm transition ${
-                        isActive ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
-                      } disabled:opacity-50`}
-                      aria-pressed={isActive}
-                    >
-                      {metricLabels[option]}
-                    </button>
-                  );
-                })}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {metricOptions.map((option) => {
+                    const isActive = graphMetric === option;
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setGraphMetric(option)}
+                        disabled={graphLoading}
+                        className={`rounded border px-3 py-1 text-sm transition ${
+                          isActive ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                        } disabled:opacity-50`}
+                        aria-pressed={isActive}
+                      >
+                        {metricLabels[option]}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {graphTypeOptions.map(({ value, label }) => {
+                    const isActive = graphType === value;
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setGraphType(value)}
+                        disabled={graphLoading}
+                        className={`rounded border px-3 py-1 text-sm transition ${
+                          isActive ? 'border-slate-900 bg-slate-900 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                        } disabled:opacity-50`}
+                        aria-pressed={isActive}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-700">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={showAxes}
+                      onChange={(e) => setShowAxes(e.target.checked)}
+                      className="h-4 w-4"
+                    />
+                    <span>Show axes</span>
+                  </label>
+                </div>
               </div>
             </div>
+            {allMembers.length > 0 && (
+              <div className="mb-4 rounded border border-gray-200 p-3">
+                <div className="mb-2 flex items-center justify-between text-sm">
+                  <span className="font-medium text-gray-700">Member visibility</span>
+                  <div className="flex items-center gap-3 text-xs">
+                    <button type="button" onClick={handleSelectAllMembers} className="text-indigo-600 hover:underline">Select all</button>
+                    <button type="button" onClick={handleClearMembers} className="text-indigo-600 hover:underline">Clear all</button>
+                  </div>
+                </div>
+                <div className="max-h-40 overflow-y-auto text-sm">
+                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {allMembers.map((member) => {
+                      const isActive = activeMembers.has(member);
+                      return (
+                        <label key={member} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isActive}
+                            onChange={() => handleToggleMember(member)}
+                            className="h-4 w-4"
+                          />
+                          <span className="truncate text-gray-700">{member}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
             {graphLoading && <div className="text-sm text-gray-600">Loading graph...</div>}
             {!graphLoading && chartData.length === 0 && (
               <div className="text-sm text-gray-600">No data to display.</div>
             )}
             {!graphLoading && chartData.length > 0 && (
               <div style={{ overflowX: 'auto' }}>
-                <BarChart
-                  data={chartData}
-                  width={945}
-                  barHeight={25}
-                  metric={graphMetric}
-                  metricLabel={metricLabels[graphMetric]}
-                />
+                {graphType === 'bar' && (
+                  <BarChart
+                    data={filteredChartData}
+                    width={945}
+                    barHeight={25}
+                    metric={graphMetric}
+                    metricLabel={metricLabels[graphMetric]}
+                  />
+                )}
+                {graphType === 'line' && (
+                  filteredLineSeries.length > 0 ? (
+                    <LineChart
+                      series={filteredLineSeries}
+                      width={945}
+                      height={340}
+                      metric={graphMetric}
+                      metricLabel={metricLabels[graphMetric]}
+                      showAxes={showAxes}
+                    />
+                  ) : (
+                    <div className="text-sm text-gray-600">Not enough timeline data to render the line chart.</div>
+                  )
+                )}
+                {graphType === 'pie' && (
+                  <PieChart
+                    data={filteredChartData}
+                    size={360}
+                    metric={graphMetric}
+                    metricLabel={metricLabels[graphMetric]}
+                  />
+                )}
               </div>
             )}
           </div>
@@ -736,4 +965,290 @@ function BarChart({
       })}
     </svg>
   );
+}
+
+function LineChart({
+  series,
+  metric,
+  metricLabel,
+  width = 900,
+  height = 340,
+  showAxes = true
+}: {
+  series: MemberLineSeries[];
+  metric: GraphMetric;
+  metricLabel: string;
+  width?: number;
+  height?: number;
+  showAxes?: boolean;
+}) {
+  if (!series.length) return null;
+
+  const paddingLeft = 80;
+  const paddingRight = 40;
+  const paddingTop = 24;
+  const paddingBottom = 80;
+  const usableWidth = Math.max(60, width - paddingLeft - paddingRight);
+  const usableHeight = Math.max(60, height - paddingTop - paddingBottom);
+
+  const dateSet = new Set<string>();
+  series.forEach((s) => s.points.forEach((p) => dateSet.add(p.date)));
+  const dates = Array.from(dateSet).sort((a, b) => a.localeCompare(b));
+  if (dates.length === 0) {
+    return <div className="text-sm text-gray-600">No timeline data available.</div>;
+  }
+
+  const stepX = dates.length > 1 ? usableWidth / (dates.length - 1) : 0;
+
+  const allValues: number[] = [];
+  series.forEach((s) => {
+    const map = new Map(s.points.map((p) => [p.date, p]));
+    dates.forEach((date) => {
+      allValues.push(map.get(date)?.[metric] ?? 0);
+    });
+  });
+  const maxValue = Math.max(1, ...allValues);
+
+  const tickCount = 5;
+  const ticks = Array.from({ length: tickCount + 1 }, (_, i) => (maxValue / tickCount) * i);
+
+  const colorMap = new Map<string, string>();
+  series.forEach((s, idx) => {
+    colorMap.set(s.member, CHART_COLORS[idx % CHART_COLORS.length]);
+  });
+
+  const formatDateLabel = (date: string) => {
+    try {
+      const parsed = new Date(date);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      }
+    } catch {
+      // ignore
+    }
+    return date;
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <svg width={width} height={height} role="img" aria-label={`Line chart of ${metricLabel} over time`}>
+        {showAxes && (
+          <>
+            <line
+              x1={paddingLeft}
+              y1={paddingTop}
+              x2={paddingLeft}
+              y2={paddingTop + usableHeight}
+              stroke="#e2e8f0"
+              strokeWidth={1}
+            />
+            <line
+              x1={paddingLeft}
+              y1={paddingTop + usableHeight}
+              x2={paddingLeft + usableWidth}
+              y2={paddingTop + usableHeight}
+              stroke="#e2e8f0"
+              strokeWidth={1}
+            />
+            {ticks.map((tickValue, idx) => {
+              const ratio = maxValue === 0 ? 0 : tickValue / maxValue;
+              const y = paddingTop + usableHeight - ratio * usableHeight;
+              return (
+                <g key={`tick-${idx}`}>
+                  <line
+                    x1={paddingLeft - 6}
+                    y1={y}
+                    x2={paddingLeft}
+                    y2={y}
+                    stroke="#94a3b8"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={paddingLeft - 10}
+                    y={y + 4}
+                    fontSize={10}
+                    fill="#475569"
+                    textAnchor="end"
+                  >
+                    {Math.round(tickValue)}
+                  </text>
+                  <line
+                    x1={paddingLeft}
+                    y1={y}
+                    x2={paddingLeft + usableWidth}
+                    y2={y}
+                    stroke="#f1f5f9"
+                    strokeWidth={idx === 0 ? 0 : 1}
+                  />
+                </g>
+              );
+            })}
+            <text
+              x={paddingLeft - 50}
+              y={paddingTop + usableHeight / 2}
+              fontSize={11}
+              fill="#475569"
+              textAnchor="middle"
+              transform={`rotate(-90, ${paddingLeft - 50}, ${paddingTop + usableHeight / 2})`}
+            >
+              {metricLabel}
+            </text>
+          </>
+        )}
+        {dates.map((date, idx) => {
+          const x = paddingLeft + idx * stepX;
+          return (
+            <g key={date}>
+              {showAxes && (
+                <line
+                  x1={x}
+                  y1={paddingTop}
+                  x2={x}
+                  y2={paddingTop + usableHeight}
+                  stroke="#f1f5f9"
+                  strokeWidth={1}
+                />
+              )}
+              <text
+                x={x}
+                y={height - 40}
+                fontSize={10}
+                fill="#475569"
+                textAnchor="middle"
+                transform={`rotate(45, ${x}, ${height - 40})`}
+              >
+                {formatDateLabel(date)}
+              </text>
+            </g>
+          );
+        })}
+
+        {series.map((s) => {
+          const pointMap = new Map(s.points.map((p) => [p.date, p]));
+          const color = colorMap.get(s.member) ?? '#4f46e5';
+          const polylinePoints = dates
+            .map((date, idx) => {
+              const value = pointMap.get(date)?.[metric] ?? 0;
+              const x = paddingLeft + idx * stepX;
+              const y = paddingTop + usableHeight - (value / maxValue) * usableHeight;
+              return `${x},${y}`;
+            })
+            .join(' ');
+
+          return (
+            <g key={s.member}>
+              <polyline
+                fill="none"
+                stroke={color}
+                strokeWidth={2}
+                points={polylinePoints}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+              {dates.map((date, idx) => {
+                const value = pointMap.get(date)?.[metric] ?? 0;
+                const x = paddingLeft + idx * stepX;
+                const y = paddingTop + usableHeight - (value / maxValue) * usableHeight;
+                return (
+                  <g key={`${s.member}-${date}`}>
+                    <circle cx={x} cy={y} r={3} fill={color} />
+                    {value > 0 && (
+                      <text x={x} y={y - 6} fontSize={10} fill={color} textAnchor="middle">
+                        {value}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })}
+      </svg>
+      <div className="flex flex-wrap gap-3 text-sm text-gray-700">
+        {series.map((s) => (
+          <div key={s.member} className="flex items-center gap-2">
+            <span className="inline-block h-2 w-4 rounded" style={{ backgroundColor: colorMap.get(s.member) ?? '#4f46e5' }}></span>
+            <span>{s.member}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PieChart({
+  data,
+  metric,
+  metricLabel,
+  size = 360
+}: {
+  data: { member: string; contributions: number; addedLines: number; removedLines: number }[];
+  metric: GraphMetric;
+  metricLabel: string;
+  size?: number;
+}) {
+  const radius = size / 2;
+  const center = radius;
+  const values = data.map(d => d[metric] ?? 0);
+  const total = values.reduce((sum, value) => sum + value, 0) || 1;
+  const colors = CHART_COLORS;
+
+  let cumulative = 0;
+
+  const slices = data.map((d, i) => {
+    const value = d[metric] ?? 0;
+    const startAngle = cumulative;
+    const angle = (value / total) * 360;
+    cumulative += angle;
+    const endAngle = cumulative;
+
+    const largeArc = angle > 180 ? 1 : 0;
+
+    const start = polarToCartesian(center, center, radius - 10, endAngle);
+    const end = polarToCartesian(center, center, radius - 10, startAngle);
+
+    const pathData = [
+      `M ${center} ${center}`,
+      `L ${start.x} ${start.y}`,
+      `A ${radius - 10} ${radius - 10} 0 ${largeArc} 0 ${end.x} ${end.y}`,
+      'Z'
+    ].join(' ');
+
+    return {
+      pathData,
+      color: colors[i % colors.length],
+      member: d.member,
+      value
+    };
+  });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <svg width={size} height={size} role="img" aria-label={`Pie chart of ${metricLabel}`}>
+        {slices.map((slice, index) => (
+          <path key={slice.member + index} d={slice.pathData} fill={slice.color} stroke="#ffffff" strokeWidth={1} />
+        ))}
+        <text x={center} y={center} textAnchor="middle" fontSize={16} fill="#111">
+          {metricLabel}
+        </text>
+      </svg>
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        {slices.map((slice, index) => (
+          <div key={slice.member + index} className="flex items-center gap-2 text-sm text-gray-700">
+            <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: slice.color }}></span>
+            <span className="truncate">{slice.member}</span>
+            <span className="ml-auto font-medium">{slice.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
+  };
 }
