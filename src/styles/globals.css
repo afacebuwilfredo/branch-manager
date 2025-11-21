@@ -1,0 +1,218 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reset and base styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  line-height: 1.5;
+  background-color: #f8f9fa;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+header {
+  margin-bottom: 2rem;
+}
+
+h1 {
+  margin: 0 0 1rem;
+}
+
+.controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin: 12px 0;
+}
+
+.controls input,
+.controls select {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  min-width: 200px;
+}
+
+.sites {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.site {
+  padding: 1.5rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: white;
+}
+
+.site .meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.site a {
+  color: #0066cc;
+  text-decoration: none;
+  font-weight: 500;
+  font-size: 1.1rem;
+}
+
+.site a:hover {
+  text-decoration: underline;
+}
+
+.small {
+  font-size: 0.875rem;
+  color: #666;
+  margin-top: 0.25rem;
+}
+
+.row {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin: 1rem 0;
+}
+
+.btn {
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.btn:hover:not(:disabled) {
+  background: #f5f5f5;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.muted {
+  color: #666;
+}
+
+code {
+  background: #f5f5f5;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
+
+select {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  min-width: 150px;
+}
+
+.command-output {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f8f8f8;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  font-family: monospace;
+  white-space: pre-wrap;
+  font-size: 0.875rem;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Contribution Report Styles */
+.contribution-report {
+  padding: 1rem;
+  font-family: system-ui, Arial, sans-serif;
+}
+
+.contribution-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.contribution-header .avatar {
+  border-radius: 6px;
+}
+
+.contribution-header .user-info {
+  flex-grow: 1;
+}
+
+.contribution-header .controls {
+  margin-left: auto;
+}
+
+.contribution-section {
+  margin-bottom: 1.75rem;
+}
+
+.contribution-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.contribution-table th {
+  text-align: left;
+  padding: 0.5rem;
+}
+
+.contribution-table td {
+  padding: 0.5rem;
+  border-top: 1px solid #eee;
+}
+
+.contribution-table .member-cell {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.contribution-table .member-cell .avatar {
+  border-radius: 6px;
+}
+
+.contribution-notes {
+  margin-top: 1.25rem;
+  color: #666;
+  font-size: 0.8125rem;
+}
+
+.error-message {
+  margin-top: 0.75rem;
+  color: crimson;
+  font-weight: 500;
+}
+
+.loading-message {
+  color: #666;
+}
+
+.no-contributions {
+  color: #666;
+}
