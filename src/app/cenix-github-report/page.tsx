@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Image from 'next/image';
 
 type User = {
@@ -21,6 +21,12 @@ type ContributionRow = {
   addedLines: number;
   removedLines: number;
 };
+
+type GraphMetric = 'contributions' | 'addedLines' | 'removedLines';
+
+type SortColumn = 'repository' | 'member' | 'date' | 'contributions' | 'addedLines' | 'removedLines';
+type SortDirection = 'asc' | 'desc';
+type NumericSortColumn = Extract<SortColumn, 'contributions' | 'addedLines' | 'removedLines'>;
 
 type ReportResponse = {
   totalRows: number;
@@ -46,6 +52,10 @@ export default function CenixGitHubReport() {
   const [reportData, setReportData] = useState<ReportResponse | null>(null);
   const [loadingReport, setLoadingReport] = useState(false);
   const [page, setPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState<{ column: SortColumn; direction: SortDirection }>({
+    column: 'date',
+    direction: 'desc'
+  });
   const [startDate, setStartDate] = useState(() => {
     const date = new Date();
     date.setDate(date.getDate() - 30); // Default to last 30 days
@@ -156,8 +166,87 @@ export default function CenixGitHubReport() {
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ fetched: number; total?: number } | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
-  const [graphData, setGraphData] = useState<{ member: string; contributions: number }[] | null>(null);
+  const [graphData, setGraphData] = useState<
+    { member: string; contributions: number; addedLines: number; removedLines: number }[] | null
+  >(null);
   const [showGraph, setShowGraph] = useState(false);
+  const [graphMetric, setGraphMetric] = useState<GraphMetric>('contributions');
+
+  const metricLabels: Record<GraphMetric, string> = {
+    contributions: 'Commits',
+    addedLines: 'Added Lines',
+    removedLines: 'Removed Lines'
+  };
+  const metricOptions: GraphMetric[] = ['contributions', 'addedLines', 'removedLines'];
+
+  const sortRows = useCallback((rows: ContributionRow[]) => {
+    const rowsCopy = [...rows];
+    rowsCopy.sort((a, b) => {
+      const multiplier = sortConfig.direction === 'asc' ? 1 : -1;
+      if (sortConfig.column === 'repository' || sortConfig.column === 'member' || sortConfig.column === 'date') {
+        const cmp = a[sortConfig.column].localeCompare(b[sortConfig.column]);
+        if (cmp !== 0) {
+          return cmp * multiplier;
+        }
+      } else {
+        const numericColumn = sortConfig.column as NumericSortColumn;
+        const cmp = a[numericColumn] - b[numericColumn];
+        if (cmp !== 0) {
+          return cmp * multiplier;
+        }
+      }
+      const dateFallback = b.date.localeCompare(a.date);
+      if (dateFallback !== 0) return dateFallback;
+      return b.contributions - a.contributions;
+    });
+    return rowsCopy;
+  }, [sortConfig]);
+
+  const sortedRows = useMemo(() => {
+    if (!reportData?.rows) return [];
+    return sortRows(reportData.rows);
+  }, [reportData, sortRows]);
+
+  const chartData = useMemo(() => {
+    if (!graphData) return [];
+    const copy = [...graphData];
+    copy.sort((a, b) => b[graphMetric] - a[graphMetric]);
+    return copy.slice(0, 25);
+  }, [graphData, graphMetric]);
+
+  function handleSort(column: SortColumn) {
+    setSortConfig((prev) => {
+      if (prev.column === column) {
+        return {
+          column,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc'
+        };
+      }
+      return {
+        column,
+        direction: column === 'date' ? 'desc' : 'asc'
+      };
+    });
+  }
+
+  const SortHeaderButton = ({ column, label, align = 'left' }: { column: SortColumn; label: string; align?: 'left' | 'right' }) => {
+    const isActive = sortConfig.column === column;
+    return (
+      <button
+        type="button"
+        onClick={() => handleSort(column)}
+        className={`flex w-full items-center gap-1 text-xs font-medium uppercase tracking-wider text-gray-500 ${align === 'right' ? 'justify-end' : 'justify-start'}`}
+        aria-label={`Sort by ${label}`}
+      >
+        <span>{label}</span>
+        {isActive && (
+          <span aria-hidden="true">
+            {sortConfig.direction === 'asc' ? '▲' : '▼'}
+          </span>
+        )}
+      </button>
+    );
+  };
 
   function downloadCsvFromRows(rows: ContributionRow[], filename?: string) {
     if (!rows || rows.length === 0) return;
@@ -189,8 +278,8 @@ export default function CenixGitHubReport() {
 
   // Export only currently displayed rows (current page)
   function exportCurrentPageCsv() {
-    if (!reportData?.rows.length) return;
-    downloadCsvFromRows(reportData.rows);
+    if (!sortedRows.length) return;
+    downloadCsvFromRows(sortedRows);
   }
 
   // Export all pages by fetching all pages from server and concatenating rows
@@ -238,7 +327,7 @@ export default function CenixGitHubReport() {
         setExportProgress({ fetched: allRows.length, total });
       }
 
-      downloadCsvFromRows(allRows, `github-contributions-all-${startDate}-${endDate}.csv`);
+      downloadCsvFromRows(sortRows(allRows), `github-contributions-all-${startDate}-${endDate}.csv`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to export all pages');
     } finally {
@@ -425,12 +514,27 @@ export default function CenixGitHubReport() {
                       const perPage = reportData.perPage;
                       const total = reportData.totalRows;
                       const pages = Math.max(1, Math.ceil(total / perPage));
-                      const memberMap = new Map<string, number>();
+                      const memberMap = new Map<
+                        string,
+                        { contributions: number; addedLines: number; removedLines: number }
+                      >();
+
+                      const accumulateRow = (r: ContributionRow) => {
+                        const existing = memberMap.get(r.member) ?? {
+                          contributions: 0,
+                          addedLines: 0,
+                          removedLines: 0
+                        };
+                        existing.contributions += r.contributions;
+                        existing.addedLines += r.addedLines;
+                        existing.removedLines += r.removedLines;
+                        memberMap.set(r.member, existing);
+                      };
 
                       // include current page rows
                       if (reportData.rows && reportData.rows.length > 0) {
                         for (const r of reportData.rows) {
-                          memberMap.set(r.member, (memberMap.get(r.member) ?? 0) + r.contributions);
+                          accumulateRow(r);
                         }
                       }
 
@@ -447,15 +551,17 @@ export default function CenixGitHubReport() {
                         }
                         const json: ReportResponse = await resp.json();
                         for (const r of json.rows) {
-                          memberMap.set(r.member, (memberMap.get(r.member) ?? 0) + r.contributions);
+                          accumulateRow(r);
                         }
                       }
 
-                      // Convert to array and sort
-                      const arr = Array.from(memberMap.entries()).map(([member, contributions]) => ({ member, contributions }));
-                      arr.sort((a, b) => b.contributions - a.contributions);
-                      // limit to top 25 for chart
-                      setGraphData(arr.slice(0, 25));
+                      const arr = Array.from(memberMap.entries()).map(([member, metrics]) => ({
+                        member,
+                        contributions: metrics.contributions,
+                        addedLines: metrics.addedLines,
+                        removedLines: metrics.removedLines
+                      }));
+                      setGraphData(arr);
                     } catch (err) {
                       setError(err instanceof Error ? err.message : 'Failed to build graph');
                       setShowGraph(false);
@@ -485,17 +591,29 @@ export default function CenixGitHubReport() {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Repository</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Contributions</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Added Lines</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Removed Lines</th>
+                    <th className="px-6 py-3 text-left">
+                      <SortHeaderButton column="repository" label="Repository" />
+                    </th>
+                    <th className="px-6 py-3 text-left">
+                      <SortHeaderButton column="member" label="Member" />
+                    </th>
+                    <th className="px-6 py-3 text-left">
+                      <SortHeaderButton column="date" label="Date" />
+                    </th>
+                    <th className="px-6 py-3 text-right">
+                      <SortHeaderButton column="contributions" label="Contributions" align="right" />
+                    </th>
+                    <th className="px-6 py-3 text-right">
+                      <SortHeaderButton column="addedLines" label="Added Lines" align="right" />
+                    </th>
+                    <th className="px-6 py-3 text-right">
+                      <SortHeaderButton column="removedLines" label="Removed Lines" align="right" />
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {reportData.rows.map((row, i) => (
-                    <tr key={i} className={i % 2 === 0 ? 'even:bg-gray-50 hover:bg-gray-100' : 'hover:bg-gray-100'}>
+                  {sortedRows.map((row, i) => (
+                    <tr key={`${row.repository}-${row.member}-${row.date}-${i}`} className={i % 2 === 0 ? 'even:bg-gray-50 hover:bg-gray-100' : 'hover:bg-gray-100'}>
                       <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{row.repository}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{row.member}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{row.date}</td>
@@ -536,14 +654,41 @@ export default function CenixGitHubReport() {
         {/* Graph area */}
         {showGraph && (
           <div className="mt-6 bg-white p-4 rounded shadow">
-            <h3 className="text-lg font-medium mb-3">Contributions by member (top 25)</h3>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-lg font-medium">Top members by {metricLabels[graphMetric]}</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                {metricOptions.map((option) => {
+                  const isActive = graphMetric === option;
+                  return (
+                    <button
+                      key={option}
+                      type="button"
+                      onClick={() => setGraphMetric(option)}
+                      disabled={graphLoading}
+                      className={`rounded border px-3 py-1 text-sm transition ${
+                        isActive ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100'
+                      } disabled:opacity-50`}
+                      aria-pressed={isActive}
+                    >
+                      {metricLabels[option]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
             {graphLoading && <div className="text-sm text-gray-600">Loading graph...</div>}
-            {!graphLoading && graphData && graphData.length === 0 && (
+            {!graphLoading && chartData.length === 0 && (
               <div className="text-sm text-gray-600">No data to display.</div>
             )}
-            {!graphLoading && graphData && graphData.length > 0 && (
+            {!graphLoading && chartData.length > 0 && (
               <div style={{ overflowX: 'auto' }}>
-                <BarChart data={graphData} width={900} barHeight={28} />
+                <BarChart
+                  data={chartData}
+                  width={945}
+                  barHeight={25}
+                  metric={graphMetric}
+                  metricLabel={metricLabels[graphMetric]}
+                />
               </div>
             )}
           </div>
@@ -553,25 +698,39 @@ export default function CenixGitHubReport() {
   );
 }
 
-function BarChart({ data, width = 600, barHeight = 24 }: { data: { member: string; contributions: number }[]; width?: number; barHeight?: number }) {
+function BarChart({
+  data,
+  metric,
+  metricLabel,
+  width = 600,
+  barHeight = 24
+}: {
+  data: { member: string; contributions: number; addedLines: number; removedLines: number }[];
+  metric: GraphMetric;
+  metricLabel: string;
+  width?: number;
+  barHeight?: number;
+}) {
   const paddingLeft = 220; // label column width
   const gap = 8;
   const chartWidth = width;
   const chartInnerWidth = Math.max(200, chartWidth - paddingLeft - 24);
-  const height = data.length * (barHeight + gap) + 24;
-  const max = Math.max(1, ...data.map(d => d.contributions));
+  const height = data.length * (barHeight + gap) + 24 ;
+  const values = data.map(d => d[metric] ?? 0);
+  const max = Math.max(1, ...values);
 
   return (
-    <svg width={chartWidth} height={height} viewBox={`0 0 ${chartWidth+10} ${height}`} role="img" aria-label="Contributions bar chart">
+    <svg width={chartWidth} height={height} viewBox={`0 0 ${chartWidth+10} ${height +20}`} role="img" aria-label={`Top members by ${metricLabel}`}>
       {data.map((d, i) => {
         const y = 12 + i * (barHeight + gap);
-        const w = Math.round((d.contributions / max) * chartInnerWidth);
+        const value = d[metric] ?? 0;
+        const w = Math.round((value / max) * chartInnerWidth);
         return (
           <g key={d.member}>
             <text x={8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{d.member}</text>
             <rect x={paddingLeft} y={y} width={chartInnerWidth} height={barHeight} fill="#f1f5f9" rx={4} />
             <rect x={paddingLeft} y={y} width={w} height={barHeight} fill="#4f46e5" rx={4} />
-            <text x={paddingLeft + chartInnerWidth + 8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{d.contributions}</text>
+            <text x={paddingLeft + chartInnerWidth + 8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{value}</text>
           </g>
         );
       })}
