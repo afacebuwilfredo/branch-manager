@@ -24,7 +24,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
       path: '/',
       maxAge: 7 * 24 * 3600, // 7 days
     }));
-    return res.redirect('/contribution-report');
+    return res.redirect('/');
   }
 
   if (!clientId) {
