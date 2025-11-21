@@ -12,13 +12,20 @@ export default function Home() {
   const [remoteFolderInputs, setRemoteFolderInputs] = useState<Record<string, string>>({});
   const [siteFolders, setSiteFolders] = useState<Record<string, string[]>>({});
   const [currentPage, setCurrentPage] = useState(1);
-  const [assignedFilter, setAssignedFilter] = useState("all");
+  const [assignedFilter, setAssignedFilter] = useState("");
   const [branchFilter, setBranchFilter] = useState("");
   const ITEMS_PER_PAGE = 8;
 
-  // Get unique assigned users and branches for filters
-  const uniqueAssigned = Array.from(new Set(sites.map(s => s.assigned || "unassigned"))).sort();
-  const uniqueBranches = Array.from(new Set(sites.flatMap(s => s.branches || []))).sort();
+  // Get unique assigned users for filter suggestions
+  const uniqueAssigned = Array.from(new Set(sites.map(s => s.assigned || "").filter(Boolean))).sort();
+
+  // Function to get filtered suggestions based on current input
+  const getAssignedSuggestions = (input: string) => {
+    const inputLower = input.toLowerCase();
+    return uniqueAssigned.filter(user => 
+      user.toLowerCase().includes(inputLower)
+    );
+  };
 
   const filteredSites = sites
     .filter(site => {
@@ -27,12 +34,10 @@ export default function Home() {
         site.name.toLowerCase().includes(q) || 
         site.url.toLowerCase().includes(q) || 
         site.folderPath.toLowerCase().includes(q) || 
-        site.server.toLowerCase().includes(q) || 
-        (site.assigned || '').toLowerCase().includes(q);
+        site.server.toLowerCase().includes(q);
       const matchesServer = serverFilter === 'all' || site.server === serverFilter;
-      const matchesAssigned = assignedFilter === 'all' || 
-        (assignedFilter === 'unassigned' && !site.assigned) ||
-        site.assigned === assignedFilter;
+      const matchesAssigned = !assignedFilter || 
+        (site.assigned || '').toLowerCase().includes(assignedFilter.toLowerCase());
       const matchesBranch = !branchFilter || 
         site.branches?.some(b => b.toLowerCase().includes(branchFilter.toLowerCase()));
       return matchesSearch && matchesServer && matchesAssigned && matchesBranch;
@@ -227,17 +232,16 @@ export default function Home() {
         setSites(prev => prev.map(s => s.id === siteId ? { ...s, commandOutput: renameData.stdout } : s));
       } else {
         // If folder doesn't exist, do a bare clone
-        const url = `https://afafilo:${process.env.GITHUBTOKEN}@github.com/afafilo/${target}.git`;
         const resp = await fetch('/api/run', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ cmd: 'clonebare', cwd: site.folderPath, url, target }),
+          body: JSON.stringify({ cmd: 'clonebare', cwd: site.folderPath, target }),
         });
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
           throw new Error(data.error || 'Failed to clone bare repository');
         }
-        setSites(prev => prev.map(s => s.id === siteId ? { ...s, commandOutput: data.stdout || `Cloned bare repo ${url} -> ${target}` } : s));
+        setSites(prev => prev.map(s => s.id === siteId ? { ...s, commandOutput: data.stdout || `Cloned bare repo ${target}` } : s));
       }
     } catch (err) {
       console.error(err);
@@ -251,51 +255,167 @@ export default function Home() {
     <div className="container">
       <header>
         <h1>Website Branch Manager</h1>
-        <div className="controls" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', flex: '1' }}>
+        <div className="controls" style={{ 
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '12px',
+          padding: '12px',
+          background: '#f8f9fa',
+          borderRadius: '8px',
+          margin: '12px 0'
+        }}>
+          {/* Search Input */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.9em', color: '#666' }}>
+              Search
+            </label>
             <input
               type="text"
-              placeholder="Search website or url"
+              placeholder="Search website or url..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              style={{ minWidth: '200px' }}
+              style={{
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
             />
+          </div>
+          
+          {/* Assigned User Filter */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.9em', color: '#666' }}>
+              Assigned User
+            </label>
+            <input
+              type="text"
+              placeholder="Search user..."
+              value={assignedFilter}
+              onChange={e => {
+                setAssignedFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{ 
+                padding: '8px',
+                paddingRight: assignedFilter ? '30px' : '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
+            />
+            {assignedFilter && (
+              <button
+                onClick={() => setAssignedFilter('')}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  bottom: '8px',
+                  border: 'none',
+                  background: 'none',
+                  cursor: 'pointer',
+                  color: '#666',
+                  padding: '4px'
+                }}
+              >
+                ×
+              </button>
+            )}
+            {assignedFilter && getAssignedSuggestions(assignedFilter).length > 0 && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 4px)',
+                left: 0,
+                right: 0,
+                background: 'white',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                maxHeight: '200px',
+                overflowY: 'auto',
+                zIndex: 1000,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
+              }}>
+                {getAssignedSuggestions(assignedFilter).map(suggestion => (
+                  <div
+                    key={suggestion}
+                    onClick={() => setAssignedFilter(suggestion)}
+                    style={{
+                      padding: '8px 12px',
+                      cursor: 'pointer',
+                      backgroundColor: 'white',
+                      fontSize: '14px'
+                    }}
+                    onMouseOver={e => (e.currentTarget.style.backgroundColor = '#f5f5f5')}
+                    onMouseOut={e => (e.currentTarget.style.backgroundColor = 'white')}
+                  >
+                    {suggestion}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Branch Filter */}
+          <div style={{ position: 'relative' }}>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.9em', color: '#666' }}>
+              Branch
+            </label>
+            <input
+              type="text"
+              placeholder="Filter by branch..."
+              value={branchFilter}
+              onChange={e => {
+                setBranchFilter(e.target.value);
+                setCurrentPage(1);
+              }}
+              style={{
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px'
+              }}
+            />
+          </div>
+
+          {/* Server Filter */}
+          <div>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.9em', color: '#666' }}>
+              Server
+            </label>
             <select 
               value={serverFilter}
               onChange={e => setServerFilter(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                backgroundColor: 'white'
+              }}
             >
               <option value="all">All servers</option>
               <option value="ftp">FTP</option>
               <option value="sftp">SFTP</option>
             </select>
-            <select
-              value={assignedFilter}
-              onChange={e => {
-                setAssignedFilter(e.target.value);
-                setCurrentPage(1); // Reset to first page on filter change
-              }}
-            >
-              <option value="all">All Users</option>
-              <option value="unassigned">Unassigned</option>
-              {uniqueAssigned.filter(a => a !== "unassigned").map(user => (
-                <option key={user} value={user}>{user}</option>
-              ))}
-            </select>
           </div>
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', flex: '1' }}>
-            <input
-              type="text"
-              placeholder="Filter by branch name"
-              value={branchFilter}
-              onChange={e => {
-                setBranchFilter(e.target.value);
-                setCurrentPage(1); // Reset to first page on filter change
-              }}
-              style={{ minWidth: '200px' }}
-            />
+
+          {/* Sort Order */}
+          <div>
+            <label style={{ display: 'block', marginBottom: '4px', fontSize: '0.9em', color: '#666' }}>
+              Sort By
+            </label>
             <select
               value={sortOrder}
               onChange={e => setSortOrder(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                border: '1px solid #ddd',
+                borderRadius: '4px',
+                fontSize: '14px',
+                backgroundColor: 'white'
+              }}
             >
               <option value="name-asc">Name ↑</option>
               <option value="name-desc">Name ↓</option>

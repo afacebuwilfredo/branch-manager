@@ -249,11 +249,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         // Ensure the directory is marked as safe for Git
         await ensureSafeDirectory(cwd);
 
-        // Expect a `url` and `target` in body
-        const url = req.body && typeof req.body.url === 'string' ? String(req.body.url).trim() : '';
+        // Expect target in body
         const target = req.body && typeof req.body.target === 'string' ? String(req.body.target).trim() : '';
-        if (!url) return res.status(400).json({ ok: false, error: 'Missing clone URL' });
         if (!target) return res.status(400).json({ ok: false, error: 'Missing target folder name' });
+        
+        // Get token from environment
+        const token = process.env.GITHUB_TOKEN || process.env.GITHUBTOKEN;
+        if (!token) {
+          return res.status(500).json({ ok: false, error: 'GitHub token not configured. Please set GITHUB_TOKEN in environment variables.' });
+        }
+        
+        // Construct URL with token
+        const url = `https://afafilo:${token}@github.com/afafilo/${target}.git`;
 
         // Basic validation for URL
         const isHttp = /^https?:\/\/.+/.test(url);
@@ -442,6 +449,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse<
         return res.status(500).json({
           ok: false,
           error: `Failed to rename directory: ${err}`
+        });
+      }
+    }
+
+    // For git status, check if we have a valid git working tree first
+    if (cmd === 'status') {
+      // Ensure the directory is marked as safe for Git
+      await ensureSafeDirectory(cwd);
+
+      // Check if we have a valid git repository with a working tree
+      const gitDirCheck = await execPromise('git rev-parse --git-dir');
+      const workTreeCheck = await execPromise('git rev-parse --show-toplevel');
+      
+      if (gitDirCheck.error || workTreeCheck.error) {
+        return res.status(200).json({ 
+          ok: true, 
+          stdout: 'Not a git repository or no working tree' 
         });
       }
     }
