@@ -18,6 +18,8 @@ type ContributionRow = {
   member: string;
   date: string;
   contributions: number;
+  addedLines: number;
+  removedLines: number;
 };
 
 type ReportResponse = {
@@ -159,12 +161,14 @@ export default function CenixGitHubReport() {
 
   function downloadCsvFromRows(rows: ContributionRow[], filename?: string) {
     if (!rows || rows.length === 0) return;
-    const headers = ['Repository', 'Member', 'Date', 'Contributions'];
+    const headers = ['Repository', 'Member', 'Date', 'Contributions', 'Added Lines', 'Removed Lines'];
     const csvData = rows.map(row => [
       row.repository,
       row.member,
       row.date,
-      String(row.contributions)
+      String(row.contributions),
+      String(row.addedLines),
+      String(row.removedLines)
     ]);
 
     const csvContent = [
@@ -485,6 +489,8 @@ export default function CenixGitHubReport() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Member</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Contributions</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Added Lines</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Removed Lines</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -494,6 +500,8 @@ export default function CenixGitHubReport() {
                       <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{row.member}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{row.date}</td>
                       <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.contributions}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.addedLines}</td>
+                      <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.removedLines}</td>
                     </tr>
                   ))}
                 </tbody>

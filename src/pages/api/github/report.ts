@@ -25,6 +25,8 @@ const CONTRIBUTIONS_QUERY = `
                   name
                 }
                 committedDate
+                additions
+                deletions
               }
             }
           }
@@ -54,6 +56,8 @@ interface CommitAuthor {
 interface CommitNode {
   author: CommitAuthor;
   committedDate: string;
+  additions?: number;
+  deletions?: number;
 }
 
 interface HistoryPage {
@@ -79,6 +83,8 @@ type ContributionRow = {
   member: string;
   date: string;
   contributions: number;
+  addedLines: number;
+  removedLines: number;
 };
 
 async function fetchContributions(
@@ -157,28 +163,50 @@ async function fetchContributions(
       break;
     }
 
-    const contributions = new Map<string, Map<string, number>>();
+    const contributions = new Map<
+      string,
+      Map<
+        string,
+        {
+          contributions: number;
+          addedLines: number;
+          removedLines: number;
+        }
+      >
+    >();
 
     allNodes.forEach((commit: CommitNode) => {
       const author = commit.author.user?.login ?? commit.author.email ?? commit.author.name ?? 'unknown';
       const date = commit.committedDate.split('T')[0];
+      const additions = commit.additions ?? 0;
+      const deletions = commit.deletions ?? 0;
 
       if (!contributions.has(date)) {
         contributions.set(date, new Map());
       }
       const dateMap = contributions.get(date)!;
-      dateMap.set(author, (dateMap.get(author) ?? 0) + 1);
+      const stats = dateMap.get(author) ?? {
+        contributions: 0,
+        addedLines: 0,
+        removedLines: 0,
+      };
+      stats.contributions += 1;
+      stats.addedLines += additions;
+      stats.removedLines += deletions;
+      dateMap.set(author, stats);
     });
 
     const rows: ContributionRow[] = [];
 
     for (const [date, authors] of contributions) {
-      for (const [author, count] of authors) {
+      for (const [author, stats] of authors) {
         rows.push({
           repository: `${owner}/${name}`,
           member: author,
           date,
-          contributions: count,
+          contributions: stats.contributions,
+          addedLines: stats.addedLines,
+          removedLines: stats.removedLines,
         });
       }
     }
