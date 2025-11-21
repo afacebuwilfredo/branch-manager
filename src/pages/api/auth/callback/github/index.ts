@@ -55,7 +55,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }));
 
     // Redirect to the contribution report page
-    res.redirect('/contribution-report');
+    res.redirect('/');
   } catch (error) {
     console.error('OAuth callback error:', error);
     res.status(500).json({ error: 'OAuth callback failed' });
