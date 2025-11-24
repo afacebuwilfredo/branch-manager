@@ -28,6 +28,31 @@ type ContributionRow = {
   removedLines: number;
 };
 
+type PullRequestDetailRow = {
+  id: string;
+  branchName: string;
+  fileChanges: number;
+  commitName: string;
+  approvedBy: string | null;
+  date: string;
+  pullRequestUrl: string;
+};
+
+const detailNumberFormatter = new Intl.NumberFormat();
+const detailDateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: 'medium',
+  timeStyle: 'short'
+});
+
+const formatDetailDate = (value: string) => {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return detailDateFormatter.format(parsed);
+};
+
 type GraphMetric = 'contributions' | 'addedLines' | 'removedLines';
 type GraphType = 'bar' | 'line' | 'pie';
 
@@ -53,6 +78,8 @@ type ReportResponse = {
   perPage: number;
   rows: ContributionRow[];
 };
+
+const makeRowKey = (row: ContributionRow) => `${row.repository}|${row.member}|${row.date}`;
 
 export default function CenixGitHubReport() {
   // Authentication state
@@ -83,6 +110,10 @@ export default function CenixGitHubReport() {
   const [endDate, setEndDate] = useState(() => {
     return new Date().toISOString().split('T')[0];
   });
+  const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
+  const [rowDetails, setRowDetails] = useState<Record<string, PullRequestDetailRow[]>>({});
+  const [rowDetailsLoading, setRowDetailsLoading] = useState<Record<string, boolean>>({});
+  const [rowDetailsErrors, setRowDetailsErrors] = useState<Record<string, string | null>>({});
 
   // Load user data on mount
   useEffect(() => {
@@ -153,6 +184,10 @@ export default function CenixGitHubReport() {
     try {
       setLoadingReport(true);
       setError(null);
+      setExpandedRowKey(null);
+      setRowDetails({});
+      setRowDetailsErrors({});
+      setRowDetailsLoading({});
       
       const res = await fetch('/api/github/report', {
         method: 'POST',
@@ -447,6 +482,69 @@ export default function CenixGitHubReport() {
       setExportProgress(null);
     }
   }
+
+  const fetchRowDetailsForContribution = useCallback(async (row: ContributionRow) => {
+    const key = makeRowKey(row);
+    if (rowDetails[key] || rowDetailsLoading[key]) {
+      return;
+    }
+
+    setRowDetailsLoading((prev) => ({ ...prev, [key]: true }));
+    setRowDetailsErrors((prev) => ({ ...prev, [key]: null }));
+
+    try {
+      const response = await fetch('/api/github/row-details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repository: row.repository,
+          member: row.member,
+          date: row.date
+        })
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(text || 'Failed to load pull request details');
+      }
+
+      const data = (await response.json()) as { rows: PullRequestDetailRow[] };
+      setRowDetails((prev) => ({ ...prev, [key]: data.rows }));
+    } catch (err) {
+      setRowDetailsErrors((prev) => ({
+        ...prev,
+        [key]: err instanceof Error ? err.message : 'Failed to load pull request details'
+      }));
+    } finally {
+      setRowDetailsLoading((prev) => ({ ...prev, [key]: false }));
+    }
+  }, [rowDetails, rowDetailsLoading]);
+
+  const handleRowToggle = useCallback((row: ContributionRow) => {
+    const key = makeRowKey(row);
+    setExpandedRowKey((prev) => (prev === key ? null : key));
+    if (expandedRowKey !== key) {
+      void fetchRowDetailsForContribution(row);
+    }
+  }, [expandedRowKey, fetchRowDetailsForContribution]);
+
+  const handleContributionRowKeyDown = (event: React.KeyboardEvent<HTMLTableRowElement>, row: ContributionRow) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleRowToggle(row);
+    }
+  };
+
+  const handleDetailRowActivation = (detail: PullRequestDetailRow) => {
+    window.open(detail.pullRequestUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDetailRowKeyDown = (event: React.KeyboardEvent<HTMLTableRowElement>, detail: PullRequestDetailRow) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleDetailRowActivation(detail);
+    }
+  };
 
   // Login handler
   function handleLogin() {
@@ -756,16 +854,99 @@ export default function CenixGitHubReport() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {sortedRows.map((row, i) => (
-                    <tr key={`${row.repository}-${row.member}-${row.date}-${i}`} className={i % 2 === 0 ? 'even:bg-gray-50 hover:bg-gray-100' : 'hover:bg-gray-100'}>
-                      <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{row.repository}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{row.member}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{row.date}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.contributions}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.addedLines}</td>
-                      <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.removedLines}</td>
-                    </tr>
-                  ))}
+                  {sortedRows.map((row, i) => {
+                    const rowKey = makeRowKey(row);
+                    const isExpanded = expandedRowKey === rowKey;
+                    const detailRows = rowDetails[rowKey] ?? [];
+                    const detailLoading = rowDetailsLoading[rowKey];
+                    const detailError = rowDetailsErrors[rowKey];
+
+                    return (
+                      <React.Fragment key={rowKey}>
+                        <tr
+                          role="button"
+                          tabIndex={0}
+                          aria-expanded={isExpanded}
+                          aria-label={`Toggle details for ${row.repository} ${row.member}`}
+                          onClick={() => handleRowToggle(row)}
+                          onKeyDown={(event) => handleContributionRowKeyDown(event, row)}
+                          className={`cursor-pointer ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2`}
+                        >
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{row.repository}</td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{row.member}</td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{row.date}</td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.contributions}</td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.addedLines}</td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.removedLines}</td>
+                        </tr>
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={6} className="bg-gray-50 px-6 py-4">
+                              <div className="space-y-4">
+                                {detailLoading && (
+                                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-b-2 border-gray-500" />
+                                    Loading pull request details…
+                                  </div>
+                                )}
+
+                                {!detailLoading && detailError && (
+                                  <div className="flex items-center justify-between rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                                    <span>{detailError}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => fetchRowDetailsForContribution(row)}
+                                      className="rounded border border-red-300 px-3 py-1 text-xs font-semibold text-red-700 transition hover:bg-red-100"
+                                    >
+                                      Retry
+                                    </button>
+                                  </div>
+                                )}
+
+                                {!detailLoading && !detailError && detailRows.length === 0 && (
+                                  <div className="text-sm text-gray-600">No pull requests found for this contributor on this date.</div>
+                                )}
+
+                                {!detailLoading && !detailError && detailRows.length > 0 && (
+                                  <div className="overflow-x-auto">
+                                    <table className="min-w-full divide-y divide-gray-200 rounded border border-gray-200 bg-white text-sm">
+                                      <thead className="bg-gray-100">
+                                        <tr>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Branch name</th>
+                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">File changes</th>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Commit name</th>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Approved by</th>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Date</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100">
+                                        {detailRows.map((detail) => (
+                                          <tr
+                                            key={detail.id}
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => handleDetailRowActivation(detail)}
+                                            onKeyDown={(event) => handleDetailRowKeyDown(event, detail)}
+                                            className="cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
+                                          >
+                                            <td className="px-4 py-2 text-gray-900">{detail.branchName}</td>
+                                            <td className="px-4 py-2 text-right text-gray-900">{detailNumberFormatter.format(detail.fileChanges)}</td>
+                                            <td className="px-4 py-2 text-gray-800">{detail.commitName}</td>
+                                            <td className="px-4 py-2 text-gray-700">{detail.approvedBy ?? '—'}</td>
+                                            <td className="px-4 py-2 text-gray-600">{formatDetailDate(detail.date)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
