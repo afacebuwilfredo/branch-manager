@@ -194,19 +194,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const maxPages = 5;
 
     while (page < maxPages) {
-      const data = await performGraphQLRequest<SearchResponse>(token, ROW_DETAILS_QUERY, {
+      const data: SearchResponse = await performGraphQLRequest<SearchResponse>(token, ROW_DETAILS_QUERY, {
         query: searchQuery,
         cursor
       });
 
-      const nodes = data.search?.nodes ?? [];
+      const nodes: Array<PullRequestNode | null> = data.search?.nodes ?? [];
       nodes
-        .filter((node): node is PullRequestNode => Boolean(node))
-        .forEach((node) => {
+        .filter((node: PullRequestNode | null): node is PullRequestNode => Boolean(node))
+        .forEach((node: PullRequestNode) => {
           rows.push(transformNodeToRow(node));
         });
 
-      const pageInfo = data.search?.pageInfo;
+      const pageInfo: { hasNextPage: boolean; endCursor?: string | null } | undefined = data.search?.pageInfo;
       if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
         break;
       }
