@@ -81,6 +81,7 @@ interface ContributionsResponse {
 type ContributionRow = {
   repository: string;
   member: string;
+  memberDisplay: string;
   date: string;
   contributions: number;
   addedLines: number;
@@ -168,6 +169,7 @@ async function fetchContributions(
       Map<
         string,
         {
+          memberDisplay?: string;
           contributions: number;
           addedLines: number;
           removedLines: number;
@@ -176,7 +178,11 @@ async function fetchContributions(
     >();
 
     allNodes.forEach((commit: CommitNode) => {
-      const author = commit.author.user?.login ?? commit.author.email ?? commit.author.name ?? 'unknown';
+      const authorLogin = commit.author.user?.login?.trim();
+      const authorEmail = commit.author.email?.trim();
+      const authorName = commit.author.name?.trim();
+      const memberId = authorLogin || authorEmail || authorName || 'unknown';
+      const memberDisplay = authorName || authorLogin || authorEmail || 'unknown';
       const date = commit.committedDate.split('T')[0];
       const additions = commit.additions ?? 0;
       const deletions = commit.deletions ?? 0;
@@ -185,15 +191,19 @@ async function fetchContributions(
         contributions.set(date, new Map());
       }
       const dateMap = contributions.get(date)!;
-      const stats = dateMap.get(author) ?? {
+      const stats = dateMap.get(memberId) ?? {
+        memberDisplay,
         contributions: 0,
         addedLines: 0,
         removedLines: 0,
       };
+      if (!stats.memberDisplay && memberDisplay) {
+        stats.memberDisplay = memberDisplay;
+      }
       stats.contributions += 1;
       stats.addedLines += additions;
       stats.removedLines += deletions;
-      dateMap.set(author, stats);
+      dateMap.set(memberId, stats);
     });
 
     const rows: ContributionRow[] = [];
@@ -203,6 +213,7 @@ async function fetchContributions(
         rows.push({
           repository: `${owner}/${name}`,
           member: author,
+          memberDisplay: stats.memberDisplay ?? author,
           date,
           contributions: stats.contributions,
           addedLines: stats.addedLines,
