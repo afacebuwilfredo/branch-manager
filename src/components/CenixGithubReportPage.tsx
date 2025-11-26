@@ -22,6 +22,7 @@ type Repository = {
 type ContributionRow = {
   repository: string;
   member: string;
+  memberDisplay?: string | null;
   date: string;
   contributions: number;
   addedLines: number;
@@ -71,6 +72,7 @@ type LineSeriesPoint = {
 
 type MemberLineSeries = {
   member: string;
+  memberDisplay?: string | null;
   points: LineSeriesPoint[];
 };
 
@@ -82,6 +84,8 @@ type ReportResponse = {
 };
 
 const makeRowKey = (row: ContributionRow) => `${row.repository}|${row.member}|${row.date}`;
+const formatMemberLabel = (member: string, memberDisplay?: string | null) =>
+  memberDisplay && memberDisplay.trim().length > 0 ? memberDisplay.trim() : member;
 
 export default function CenixGitHubReport() {
   // Authentication state
@@ -223,7 +227,14 @@ export default function CenixGitHubReport() {
   const [exportProgress, setExportProgress] = useState<{ fetched: number; total?: number } | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphData, setGraphData] = useState<
-    { member: string; contributions: number; addedLines: number; removedLines: number; tasks: number }[] | null
+    {
+      member: string;
+      memberDisplay?: string | null;
+      contributions: number;
+      addedLines: number;
+      removedLines: number;
+      tasks: number;
+    }[] | null
   >(null);
   const [lineSeries, setLineSeries] = useState<MemberLineSeries[] | null>(null);
   const [showGraph, setShowGraph] = useState(false);
@@ -253,7 +264,14 @@ export default function CenixGitHubReport() {
     const rowsCopy = [...rows];
     rowsCopy.sort((a, b) => {
       const multiplier = sortConfig.direction === 'asc' ? 1 : -1;
-      if (sortConfig.column === 'repository' || sortConfig.column === 'member' || sortConfig.column === 'date') {
+      if (sortConfig.column === 'member') {
+        const aMember = formatMemberLabel(a.member, a.memberDisplay).toLowerCase();
+        const bMember = formatMemberLabel(b.member, b.memberDisplay).toLowerCase();
+        const cmp = aMember.localeCompare(bMember);
+        if (cmp !== 0) {
+          return cmp * multiplier;
+        }
+      } else if (sortConfig.column === 'repository' || sortConfig.column === 'date') {
         const cmp = a[sortConfig.column].localeCompare(b[sortConfig.column]);
         if (cmp !== 0) {
           return cmp * multiplier;
@@ -289,6 +307,13 @@ export default function CenixGitHubReport() {
     graphData?.forEach(row => unique.add(row.member));
     lineSeries?.forEach(series => unique.add(series.member));
     return Array.from(unique);
+  }, [graphData, lineSeries]);
+
+  const memberLabelMap = useMemo(() => {
+    const map = new Map<string, string>();
+    graphData?.forEach(row => map.set(row.member, formatMemberLabel(row.member, row.memberDisplay)));
+    lineSeries?.forEach(series => map.set(series.member, formatMemberLabel(series.member, series.memberDisplay)));
+    return map;
   }, [graphData, lineSeries]);
 
   useEffect(() => {
@@ -331,6 +356,7 @@ export default function CenixGitHubReport() {
     if (!lineSeries) return [];
     return lineSeries.map(series => ({
       member: series.member,
+      memberDisplay: series.memberDisplay,
       points: [...series.points].sort((a, b) => a.date.localeCompare(b.date))
     }));
   }, [lineSeries]);
@@ -407,7 +433,7 @@ export default function CenixGitHubReport() {
     const headers = ['Repository', 'Member', 'Date', 'Contributions', 'Added Lines', 'Removed Lines'];
     const csvData = rows.map(row => [
       row.repository,
-      row.member,
+      formatMemberLabel(row.member, row.memberDisplay),
       row.date,
       String(row.contributions),
       String(row.addedLines),
@@ -501,6 +527,7 @@ export default function CenixGitHubReport() {
       let processed = 0;
       for (const contributionRow of uniqueRows) {
         let detailRows = rowDetails[makeRowKey(contributionRow)];
+        const memberLabel = formatMemberLabel(contributionRow.member, contributionRow.memberDisplay);
 
         if (!detailRows) {
           try {
@@ -530,7 +557,7 @@ export default function CenixGitHubReport() {
           detailRows.forEach((detail) => {
             taskRecords.push({
               repository: contributionRow.repository,
-              member: contributionRow.member,
+              member: memberLabel,
               date: contributionRow.date,
               task: detail.task,
               branchName: detail.branchName,
@@ -622,7 +649,13 @@ export default function CenixGitHubReport() {
 
     const memberMap = new Map<
       string,
-      { contributions: number; addedLines: number; removedLines: number; tasks: number }
+      {
+        memberDisplay?: string | null;
+        contributions: number;
+        addedLines: number;
+        removedLines: number;
+        tasks: number;
+      }
     >();
     const timelineMap = new Map<
       string,
@@ -633,6 +666,7 @@ export default function CenixGitHubReport() {
     const updateGraphState = () => {
       const arr = Array.from(memberMap.entries()).map(([member, metrics]) => ({
         member,
+        memberDisplay: metrics.memberDisplay ?? member,
         contributions: metrics.contributions,
         addedLines: metrics.addedLines,
         removedLines: metrics.removedLines,
@@ -642,6 +676,7 @@ export default function CenixGitHubReport() {
 
       const lines = Array.from(timelineMap.entries()).map(([member, datesMap]) => ({
         member,
+        memberDisplay: memberMap.get(member)?.memberDisplay ?? member,
         points: Array.from(datesMap.entries())
           .map(([date, stats]) => ({
             date,
@@ -658,11 +693,15 @@ export default function CenixGitHubReport() {
     const accumulateRow = (r: ContributionRow) => {
       uniqueRowMap.set(makeRowKey(r), r);
       const existing = memberMap.get(r.member) ?? {
+        memberDisplay: formatMemberLabel(r.member, r.memberDisplay),
         contributions: 0,
         addedLines: 0,
         removedLines: 0,
         tasks: 0
       };
+      if (!existing.memberDisplay && r.memberDisplay) {
+        existing.memberDisplay = formatMemberLabel(r.member, r.memberDisplay);
+      }
       existing.contributions += r.contributions;
       existing.addedLines += r.addedLines;
       existing.removedLines += r.removedLines;
@@ -1152,6 +1191,7 @@ export default function CenixGitHubReport() {
                     const detailRows = rowDetails[rowKey] ?? [];
                     const detailLoading = rowDetailsLoading[rowKey];
                     const detailError = rowDetailsErrors[rowKey];
+                    const memberName = formatMemberLabel(row.member, row.memberDisplay);
 
                     return (
                       <React.Fragment key={rowKey}>
@@ -1159,13 +1199,13 @@ export default function CenixGitHubReport() {
                           role="button"
                           tabIndex={0}
                           aria-expanded={isExpanded}
-                          aria-label={`Toggle details for ${row.repository} ${row.member}`}
+                          aria-label={`Toggle details for ${row.repository} ${memberName}`}
                           onClick={() => handleRowToggle(row)}
                           onKeyDown={(event) => handleContributionRowKeyDown(event, row)}
                           className={`cursor-pointer ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2`}
                         >
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{row.repository}</td>
-                          <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{row.member}</td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{memberName}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{row.date}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">
                             {detailLoading
@@ -1349,6 +1389,7 @@ export default function CenixGitHubReport() {
                   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                     {allMembers.map((member) => {
                       const isActive = activeMembers.has(member);
+                      const label = memberLabelMap.get(member) ?? member;
                       return (
                         <label key={member} className="flex items-center gap-2">
                           <input
@@ -1357,7 +1398,7 @@ export default function CenixGitHubReport() {
                             onChange={() => handleToggleMember(member)}
                             className="h-4 w-4"
                           />
-                          <span className="truncate text-gray-700">{member}</span>
+                          <span className="truncate text-gray-700">{label}</span>
                         </label>
                       );
                     })}
@@ -1418,7 +1459,14 @@ function BarChart({
   width = 600,
   barHeight = 24
 }: {
-  data: { member: string; contributions: number; addedLines: number; removedLines: number; tasks: number }[];
+  data: {
+    member: string;
+    memberDisplay?: string | null;
+    contributions: number;
+    addedLines: number;
+    removedLines: number;
+    tasks: number;
+  }[];
   metric: GraphMetric;
   metricLabel: string;
   width?: number;
@@ -1438,9 +1486,10 @@ function BarChart({
         const y = 12 + i * (barHeight + gap);
         const value = d[metric] ?? 0;
         const w = Math.round((value / max) * chartInnerWidth);
+        const label = formatMemberLabel(d.member, d.memberDisplay);
         return (
           <g key={d.member}>
-            <text x={8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{d.member}</text>
+            <text x={8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{label}</text>
             <rect x={paddingLeft} y={y} width={chartInnerWidth} height={barHeight} fill="#f1f5f9" rx={4} />
             <rect x={paddingLeft} y={y} width={w} height={barHeight} fill="#4f46e5" rx={4} />
             <text x={paddingLeft + chartInnerWidth + 8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{value}</text>
@@ -1649,12 +1698,15 @@ function LineChart({
         })}
       </svg>
       <div className="flex flex-wrap gap-3 text-sm text-gray-700">
-        {series.map((s) => (
-          <div key={s.member} className="flex items-center gap-2">
-            <span className="inline-block h-2 w-4 rounded" style={{ backgroundColor: colorMap.get(s.member) ?? '#4f46e5' }}></span>
-            <span>{s.member}</span>
-          </div>
-        ))}
+        {series.map((s) => {
+          const label = formatMemberLabel(s.member, s.memberDisplay);
+          return (
+            <div key={s.member} className="flex items-center gap-2">
+              <span className="inline-block h-2 w-4 rounded" style={{ backgroundColor: colorMap.get(s.member) ?? '#4f46e5' }}></span>
+              <span>{label}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -1666,7 +1718,14 @@ function PieChart({
   metricLabel,
   size = 360
 }: {
-  data: { member: string; contributions: number; addedLines: number; removedLines: number; tasks: number }[];
+  data: {
+    member: string;
+    memberDisplay?: string | null;
+    contributions: number;
+    addedLines: number;
+    removedLines: number;
+    tasks: number;
+  }[];
   metric: GraphMetric;
   metricLabel: string;
   size?: number;
@@ -1702,6 +1761,7 @@ function PieChart({
       pathData,
       color: colors[i % colors.length],
       member: d.member,
+      memberDisplay: d.memberDisplay,
       value
     };
   });
@@ -1720,7 +1780,7 @@ function PieChart({
         {slices.map((slice, index) => (
           <div key={slice.member + index} className="flex items-center gap-2 text-sm text-gray-700">
             <span className="inline-block h-3 w-3 rounded" style={{ backgroundColor: slice.color }}></span>
-            <span className="truncate">{slice.member}</span>
+            <span className="truncate">{formatMemberLabel(slice.member, slice.memberDisplay)}</span>
             <span className="ml-auto font-medium">{slice.value}</span>
           </div>
         ))}
