@@ -30,6 +30,7 @@ type ContributionRow = {
 
 type PullRequestDetailRow = {
   id: string;
+  task: string;
   branchName: string;
   fileChanges: number;
   commitName: string;
@@ -53,7 +54,7 @@ const formatDetailDate = (value: string) => {
   return detailDateFormatter.format(parsed);
 };
 
-type GraphMetric = 'contributions' | 'addedLines' | 'removedLines';
+type GraphMetric = 'contributions' | 'addedLines' | 'removedLines' | 'tasks';
 type GraphType = 'bar' | 'line' | 'pie';
 
 type SortColumn = 'repository' | 'member' | 'date' | 'contributions' | 'addedLines' | 'removedLines';
@@ -65,6 +66,7 @@ type LineSeriesPoint = {
   contributions: number;
   addedLines: number;
   removedLines: number;
+  tasks: number;
 };
 
 type MemberLineSeries = {
@@ -221,7 +223,7 @@ export default function CenixGitHubReport() {
   const [exportProgress, setExportProgress] = useState<{ fetched: number; total?: number } | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
   const [graphData, setGraphData] = useState<
-    { member: string; contributions: number; addedLines: number; removedLines: number }[] | null
+    { member: string; contributions: number; addedLines: number; removedLines: number; tasks: number }[] | null
   >(null);
   const [lineSeries, setLineSeries] = useState<MemberLineSeries[] | null>(null);
   const [showGraph, setShowGraph] = useState(false);
@@ -230,12 +232,17 @@ export default function CenixGitHubReport() {
   const [showAxes, setShowAxes] = useState(true);
   const [visibleMembers, setVisibleMembers] = useState<Set<string>>(new Set());
 
+  const [graphBuildProgress, setGraphBuildProgress] = useState<{ label: string; processed: number; total: number } | null>(null);
+  const [exportingTasks, setExportingTasks] = useState(false);
+  const [exportTasksProgress, setExportTasksProgress] = useState<{ processed: number; total: number } | null>(null);
+
   const metricLabels: Record<GraphMetric, string> = {
     contributions: 'Commits',
     addedLines: 'Added Lines',
-    removedLines: 'Removed Lines'
+    removedLines: 'Removed Lines',
+    tasks: 'Tasks'
   };
-  const metricOptions: GraphMetric[] = ['contributions', 'addedLines', 'removedLines'];
+  const metricOptions: GraphMetric[] = ['tasks','contributions', 'addedLines', 'removedLines'];
   const graphTypeOptions: { value: GraphType; label: string }[] = [
     { value: 'bar', label: 'Bar' },
     { value: 'line', label: 'Line' },
@@ -423,11 +430,383 @@ export default function CenixGitHubReport() {
     window.URL.revokeObjectURL(url);
   }
 
-  // Export only currently displayed rows (current page)
-  function exportCurrentPageCsv() {
-    if (!sortedRows.length) return;
-    downloadCsvFromRows(sortedRows);
+  async function fetchAllContributionRows(): Promise<ContributionRow[]> {
+    if (!reportData) return [];
+    const perPage = reportData.perPage;
+    const total = reportData.totalRows;
+    const pages = Math.max(1, Math.ceil(total / perPage));
+    const allRows: ContributionRow[] = [];
+
+    if (reportData.rows && reportData.rows.length > 0) {
+      allRows.push(...reportData.rows);
+    }
+
+    for (let p = 1; p <= pages; p++) {
+      if (p === reportData.page) continue;
+
+      const resp = await fetch('/api/github/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          repoFullNames: Array.from(selectedRepos),
+          startDate,
+          endDate,
+          page: p,
+          perPage
+        })
+      });
+
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || `Failed to fetch page ${p}`);
+      }
+
+      const json: ReportResponse = await resp.json();
+      if (json.rows && json.rows.length > 0) {
+        allRows.push(...json.rows);
+      }
+    }
+
+    return allRows;
   }
+
+  async function exportTasksCsv() {
+    if (!reportData) return;
+    setExportingTasks(true);
+    setExportTasksProgress({ processed: 0, total: reportData.totalRows });
+
+    try {
+      const allRows = await fetchAllContributionRows();
+      if (!allRows.length) {
+        setError('No contributions available to export tasks.');
+        return;
+      }
+
+      const uniqueRows = Array.from(new Map(allRows.map((row) => [makeRowKey(row), row])).values());
+      setExportTasksProgress({ processed: 0, total: uniqueRows.length });
+
+      const taskRecords: Array<{
+        repository: string;
+        member: string;
+        date: string;
+        task: string;
+        branchName: string;
+        fileChanges: number;
+        commitName: string;
+        approvedBy: string | null;
+        taskDate: string;
+        pullRequestUrl: string;
+      }> = [];
+
+      let processed = 0;
+      for (const contributionRow of uniqueRows) {
+        let detailRows = rowDetails[makeRowKey(contributionRow)];
+
+        if (!detailRows) {
+          try {
+            const response = await fetch('/api/github/row-details', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                repository: contributionRow.repository,
+                member: contributionRow.member,
+                date: contributionRow.date
+              })
+            });
+
+            if (!response.ok) {
+              throw new Error(await response.text());
+            }
+
+            const data = (await response.json()) as { rows: PullRequestDetailRow[] };
+            detailRows = data.rows ?? [];
+          } catch (detailError) {
+            console.error('Failed to load task details for export:', detailError);
+            detailRows = [];
+          }
+        }
+
+        if (detailRows.length > 0) {
+          detailRows.forEach((detail) => {
+            taskRecords.push({
+              repository: contributionRow.repository,
+              member: contributionRow.member,
+              date: contributionRow.date,
+              task: detail.task,
+              branchName: detail.branchName,
+              fileChanges: detail.fileChanges,
+              commitName: detail.commitName,
+              approvedBy: detail.approvedBy ?? '',
+              taskDate: detail.date,
+              pullRequestUrl: detail.pullRequestUrl
+            });
+          });
+        }
+
+        processed += 1;
+        setExportTasksProgress({ processed, total: uniqueRows.length });
+      }
+
+      if (taskRecords.length === 0) {
+        setError('No tasks found for the selected repositories.');
+        return;
+      }
+
+      const headers = [
+        'Repository',
+        'Member',
+        'Date',
+        'Task',
+        'Branch Name',
+        'File Changes',
+        'Commit Name',
+        'Approved By',
+        'Task Date',
+        'Pull Request URL'
+      ];
+
+      const csvRows = taskRecords.map((record) => [
+        record.repository,
+        record.member,
+        record.date,
+        record.task,
+        record.branchName,
+        String(record.fileChanges),
+        record.commitName,
+        record.approvedBy ?? '',
+        record.taskDate,
+        record.pullRequestUrl
+      ]);
+
+      const csvContent = [
+        headers.join(','),
+        ...csvRows.map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `github-tasks-${startDate}-${endDate}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to export tasks');
+    } finally {
+      setExportingTasks(false);
+      setExportTasksProgress(null);
+    }
+  }
+
+  const handleGraphReportClick = useCallback(async () => {
+    if (!reportData) {
+      setError('Generate a report before building the graph.');
+      return;
+    }
+
+    if (selectedRepos.size === 0) {
+      setError('Select at least one repository to build the graph.');
+      return;
+    }
+
+    if (showGraph) {
+      setShowGraph(false);
+      return;
+    }
+
+    setGraphLoading(true);
+    setShowGraph(true);
+    setGraphBuildProgress(null);
+
+    const memberMap = new Map<
+      string,
+      { contributions: number; addedLines: number; removedLines: number; tasks: number }
+    >();
+    const timelineMap = new Map<
+      string,
+      Map<string, { contributions: number; addedLines: number; removedLines: number; tasks: number }>
+    >();
+    const uniqueRowMap = new Map<string, ContributionRow>();
+
+    const updateGraphState = () => {
+      const arr = Array.from(memberMap.entries()).map(([member, metrics]) => ({
+        member,
+        contributions: metrics.contributions,
+        addedLines: metrics.addedLines,
+        removedLines: metrics.removedLines,
+        tasks: metrics.tasks
+      }));
+      setGraphData(arr);
+
+      const lines = Array.from(timelineMap.entries()).map(([member, datesMap]) => ({
+        member,
+        points: Array.from(datesMap.entries())
+          .map(([date, stats]) => ({
+            date,
+            contributions: stats.contributions,
+            addedLines: stats.addedLines,
+            removedLines: stats.removedLines,
+            tasks: stats.tasks
+          }))
+          .sort((a, b) => a.date.localeCompare(b.date))
+      }));
+      setLineSeries(lines);
+    };
+
+    const accumulateRow = (r: ContributionRow) => {
+      uniqueRowMap.set(makeRowKey(r), r);
+      const existing = memberMap.get(r.member) ?? {
+        contributions: 0,
+        addedLines: 0,
+        removedLines: 0,
+        tasks: 0
+      };
+      existing.contributions += r.contributions;
+      existing.addedLines += r.addedLines;
+      existing.removedLines += r.removedLines;
+      memberMap.set(r.member, existing);
+
+      const timeline = timelineMap.get(r.member) ?? new Map();
+      const dayStats = timeline.get(r.date) ?? {
+        contributions: 0,
+        addedLines: 0,
+        removedLines: 0,
+        tasks: 0
+      };
+      dayStats.contributions += r.contributions;
+      dayStats.addedLines += r.addedLines;
+      dayStats.removedLines += r.removedLines;
+      timeline.set(r.date, dayStats);
+      timelineMap.set(r.member, timeline);
+    };
+
+    const includeRows = (rows?: ContributionRow[]) => {
+      if (!rows || rows.length === 0) return;
+      rows.forEach(accumulateRow);
+      updateGraphState();
+    };
+
+    try {
+      const perPage = reportData.perPage;
+      const total = reportData.totalRows;
+      const totalPages = Math.max(1, Math.ceil(total / perPage));
+      let processedContributionPages = 0;
+
+      includeRows(reportData.rows ?? []);
+      if (reportData.rows && reportData.rows.length > 0) {
+        processedContributionPages = 1;
+      }
+      setGraphBuildProgress({
+        label: 'Aggregating contributions',
+        processed: Math.min(processedContributionPages, totalPages),
+        total: totalPages
+      });
+
+      for (let p = 1; p <= totalPages; p++) {
+        if (p === reportData.page) continue;
+        const resp = await fetch('/api/github/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoFullNames: Array.from(selectedRepos),
+            startDate,
+            endDate,
+            page: p,
+            perPage
+          })
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          throw new Error(text || `Failed to fetch page ${p}`);
+        }
+
+        const json: ReportResponse = await resp.json();
+        includeRows(json.rows);
+        processedContributionPages += 1;
+        setGraphBuildProgress({
+          label: 'Aggregating contributions',
+          processed: Math.min(processedContributionPages, totalPages),
+          total: totalPages
+        });
+      }
+
+      setGraphBuildProgress({
+        label: 'Aggregating contributions',
+        processed: totalPages,
+        total: totalPages
+      });
+
+      const uniqueRows = Array.from(uniqueRowMap.values());
+      if (uniqueRows.length > 0) {
+        let processedTasks = 0;
+        setGraphBuildProgress({
+          label: 'Counting tasks',
+          processed: processedTasks,
+          total: uniqueRows.length
+        });
+
+        for (const contributionRow of uniqueRows) {
+          try {
+            const countResponse = await fetch('/api/github/task-count', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                repository: contributionRow.repository,
+                member: contributionRow.member,
+                date: contributionRow.date
+              })
+            });
+
+            if (countResponse.ok) {
+              const countData = (await countResponse.json()) as { count?: number };
+              const taskCount = typeof countData.count === 'number' ? countData.count : 0;
+
+              if (taskCount > 0) {
+                const metrics = memberMap.get(contributionRow.member);
+                if (metrics) {
+                  metrics.tasks += taskCount;
+                  memberMap.set(contributionRow.member, metrics);
+                }
+
+                const timeline = timelineMap.get(contributionRow.member) ?? new Map();
+                const dateKey = contributionRow.date;
+                const stats = timeline.get(dateKey) ?? {
+                  contributions: 0,
+                  addedLines: 0,
+                  removedLines: 0,
+                  tasks: 0
+                };
+                stats.tasks += taskCount;
+                timeline.set(dateKey, stats);
+                timelineMap.set(contributionRow.member, timeline);
+              }
+            }
+          } catch (taskError) {
+            console.error('Failed to count tasks for', contributionRow.repository, taskError);
+          } finally {
+            processedTasks += 1;
+            setGraphBuildProgress({
+              label: 'Counting tasks',
+              processed: processedTasks,
+              total: uniqueRows.length
+            });
+            updateGraphState();
+          }
+        }
+      }
+
+      setGraphBuildProgress(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to build graph');
+      setShowGraph(false);
+    } finally {
+      setGraphLoading(false);
+      setGraphBuildProgress(null);
+    }
+  }, [reportData, selectedRepos, showGraph, startDate, endDate]);
 
   // Export all pages by fetching all pages from server and concatenating rows
   async function exportAllPagesCsv() {
@@ -698,11 +1077,17 @@ export default function CenixGitHubReport() {
             {reportData && (
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
-                  onClick={exportCurrentPageCsv}
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700"
+                  onClick={exportTasksCsv}
+                  disabled={exportingTasks}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50"
                 >
-                  Export page CSV
+                  Export task
                 </button>
+                {exportTasksProgress && (
+                  <div style={{ fontSize: 12, color: '#333' }}>
+                    Tasks {exportTasksProgress.processed}/{exportTasksProgress.total}
+                  </div>
+                )}
                 <button
                   onClick={exportAllPagesCsv}
                   disabled={exporting}
@@ -711,111 +1096,17 @@ export default function CenixGitHubReport() {
                   {exporting ? 'Exporting...' : 'Export all CSV'}
                 </button>
                 <button
-                  onClick={async () => {
-                    if (showGraph) {
-                      setShowGraph(false);
-                      return;
-                    }
-                    // Generate graph data
-                    setGraphLoading(true);
-                    setShowGraph(true);
-                    try {
-                      // reuse pagination to fetch all pages
-                      const perPage = reportData.perPage;
-                      const total = reportData.totalRows;
-                      const pages = Math.max(1, Math.ceil(total / perPage));
-                      const memberMap = new Map<
-                        string,
-                        { contributions: number; addedLines: number; removedLines: number }
-                      >();
-                      const timelineMap = new Map<
-                        string,
-                        Map<
-                          string,
-                          { contributions: number; addedLines: number; removedLines: number }
-                        >
-                      >();
-
-                      const accumulateRow = (r: ContributionRow) => {
-                        const existing = memberMap.get(r.member) ?? {
-                          contributions: 0,
-                          addedLines: 0,
-                          removedLines: 0
-                        };
-                        existing.contributions += r.contributions;
-                        existing.addedLines += r.addedLines;
-                        existing.removedLines += r.removedLines;
-                        memberMap.set(r.member, existing);
-
-                        const timeline = timelineMap.get(r.member) ?? new Map();
-                        const dayStats = timeline.get(r.date) ?? {
-                          contributions: 0,
-                          addedLines: 0,
-                          removedLines: 0
-                        };
-                        dayStats.contributions += r.contributions;
-                        dayStats.addedLines += r.addedLines;
-                        dayStats.removedLines += r.removedLines;
-                        timeline.set(r.date, dayStats);
-                        timelineMap.set(r.member, timeline);
-                      };
-
-                      // include current page rows
-                      if (reportData.rows && reportData.rows.length > 0) {
-                        for (const r of reportData.rows) {
-                          accumulateRow(r);
-                        }
-                      }
-
-                      for (let p = 1; p <= pages; p++) {
-                        if (p === reportData.page) continue;
-                        const resp = await fetch('/api/github/report', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ repoFullNames: Array.from(selectedRepos), startDate, endDate, page: p, perPage })
-                        });
-                        if (!resp.ok) {
-                          const text = await resp.text();
-                          throw new Error(text || `Failed to fetch page ${p}`);
-                        }
-                        const json: ReportResponse = await resp.json();
-                        for (const r of json.rows) {
-                          accumulateRow(r);
-                        }
-                      }
-
-                      const arr = Array.from(memberMap.entries()).map(([member, metrics]) => ({
-                        member,
-                        contributions: metrics.contributions,
-                        addedLines: metrics.addedLines,
-                        removedLines: metrics.removedLines
-                      }));
-                      setGraphData(arr);
-
-                      const lines = Array.from(timelineMap.entries()).map(([member, datesMap]) => ({
-                        member,
-                        points: Array.from(datesMap.entries())
-                          .map(([date, stats]) => ({
-                            date,
-                            contributions: stats.contributions,
-                            addedLines: stats.addedLines,
-                            removedLines: stats.removedLines
-                          }))
-                          .sort((a, b) => a.date.localeCompare(b.date))
-                      }));
-                      setLineSeries(lines);
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : 'Failed to build graph');
-                      setShowGraph(false);
-                    } finally {
-                      setGraphLoading(false);
-                    }
-                  }}
+                  onClick={() => void handleGraphReportClick()}
                   disabled={graphLoading}
                   className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {showGraph ? (graphLoading ? 'Loading...' : 'Hide graph') : (graphLoading ? 'Loading...' : 'Graph report')}
                 </button>
+                {graphBuildProgress && (
+                  <div style={{ fontSize: 12, color: '#333' }}>
+                    {graphBuildProgress.label} {graphBuildProgress.processed}/{graphBuildProgress.total}
+                  </div>
+                )}
                 {exportProgress && (
                   <div style={{ fontSize: 12, color: '#333' }}>
                     Exported {exportProgress.fetched}{exportProgress.total ? ` / ${exportProgress.total}` : ''}
@@ -842,6 +1133,7 @@ export default function CenixGitHubReport() {
                     <th className="px-6 py-3 text-left">
                       <SortHeaderButton column="date" label="Date" />
                     </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Task</th>
                     <th className="px-6 py-3 text-right">
                       <SortHeaderButton column="contributions" label="Contributions" align="right" />
                     </th>
@@ -875,13 +1167,22 @@ export default function CenixGitHubReport() {
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{row.repository}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{row.member}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{row.date}</td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">
+                            {detailLoading
+                              ? '…'
+                              : detailRows.length > 0
+                                ? detailRows.length
+                                : rowDetails[rowKey]
+                                  ? 0
+                                  : '—'}
+                          </td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.contributions}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.addedLines}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.removedLines}</td>
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={6} className="bg-gray-50 px-6 py-4">
+                            <td colSpan={7} className="bg-gray-50 px-6 py-4">
                               <div className="space-y-4">
                                 {detailLoading && (
                                   <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -912,6 +1213,7 @@ export default function CenixGitHubReport() {
                                     <table className="min-w-full divide-y divide-gray-200 rounded border border-gray-200 bg-white text-sm">
                                       <thead className="bg-gray-100">
                                         <tr>
+                                          <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Task</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Branch name</th>
                                           <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">File changes</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Commit name</th>
@@ -929,6 +1231,7 @@ export default function CenixGitHubReport() {
                                             onKeyDown={(event) => handleDetailRowKeyDown(event, detail)}
                                             className="cursor-pointer hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2"
                                           >
+                                            <td className="px-4 py-2 font-mono text-gray-900">{detail.task}</td>
                                             <td className="px-4 py-2 text-gray-900">{detail.branchName}</td>
                                             <td className="px-4 py-2 text-right text-gray-900">{detailNumberFormatter.format(detail.fileChanges)}</td>
                                             <td className="px-4 py-2 text-gray-800">{detail.commitName}</td>
@@ -1115,7 +1418,7 @@ function BarChart({
   width = 600,
   barHeight = 24
 }: {
-  data: { member: string; contributions: number; addedLines: number; removedLines: number }[];
+  data: { member: string; contributions: number; addedLines: number; removedLines: number; tasks: number }[];
   metric: GraphMetric;
   metricLabel: string;
   width?: number;
@@ -1363,7 +1666,7 @@ function PieChart({
   metricLabel,
   size = 360
 }: {
-  data: { member: string; contributions: number; addedLines: number; removedLines: number }[];
+  data: { member: string; contributions: number; addedLines: number; removedLines: number; tasks: number }[];
   metric: GraphMetric;
   metricLabel: string;
   size?: number;

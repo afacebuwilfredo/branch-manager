@@ -85,6 +85,7 @@ type SearchResponse = {
 
 type PullRequestDetailRow = {
   id: string;
+  task: string;
   branchName: string;
   fileChanges: number;
   commitName: string;
@@ -148,6 +149,7 @@ const transformNodeToRow = (node: PullRequestNode): PullRequestDetailRow => {
 
   return {
     id: node.id,
+    task: `#${node.number}`,
     branchName: node.headRefName ?? 'unknown',
     fileChanges: node.changedFiles ?? 0,
     commitName: commitHeadline && commitHeadline.length > 0 ? commitHeadline : node.title,
