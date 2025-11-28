@@ -1537,7 +1537,7 @@ function BarChart({
   const height = data.length * (barHeight + gap) + 24 ;
   const values = data.map(d => d[metric] ?? 0);
   const max = Math.max(1, ...values);
-  const medalLabels = ['🥇 Gold', '🥈 Silver', '🥉 Bronze'];
+  const medalLabels = ['🥇', '🥈', '🥉'];
   const medalAssignments = new Map<string, string>();
   [...data]
     .sort((a, b) => (b[metric] ?? 0) - (a[metric] ?? 0))
@@ -1556,13 +1556,18 @@ function BarChart({
         const w = Math.round((value / max) * chartInnerWidth);
         const label = formatMemberLabel(d.member, d.memberDisplay);
         const medalLabel = medalAssignments.get(d.member);
-        const decoratedLabel = medalLabel ? `${medalLabel} ${label}` : label;
+        const isTopThree = i < 3;
+        const fontSize = isTopThree ? 14 : 12;
+        const medalFontSize = isTopThree ? 25 : 16;
         return (
           <g key={d.member}>
-            <text x={8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{decoratedLabel}</text>
+            {medalLabel && (
+              <text x={8} y={y + barHeight / 2 + 6} fontSize={medalFontSize} fill="#111">{medalLabel}</text>
+            )}
+            <text x="45" y={y + barHeight / 2 + 4} fontSize={fontSize} fill="#111" fontWeight={isTopThree ? 600 : 400}>{label}</text>
             <rect x={paddingLeft} y={y} width={chartInnerWidth} height={barHeight} fill="#f1f5f9" rx={4} />
             <rect x={paddingLeft} y={y} width={w} height={barHeight} fill="#4f46e5" rx={4} />
-            <text x={paddingLeft + chartInnerWidth + 8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{value}</text>
+            <text x={paddingLeft + chartInnerWidth + 8} y={y + barHeight / 2 + 4} fontSize={fontSize} fill="#111" fontWeight={isTopThree ? 600 : 400}>{value}</text>
           </g>
         );
       })}
