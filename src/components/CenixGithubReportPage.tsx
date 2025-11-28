@@ -250,8 +250,8 @@ export default function CenixGitHubReport() {
 
   const metricLabels: Record<GraphMetric, string> = {
     contributions: 'Commits',
-    addedLines: 'Added Lines',
-    removedLines: 'Removed Lines',
+    addedLines: 'Modified Lines',
+    removedLines: 'Optimized Lines',
     tasks: 'Tasks'
   };
   const metricOptions: GraphMetric[] = ['tasks','contributions', 'addedLines', 'removedLines'];
@@ -457,7 +457,7 @@ export default function CenixGitHubReport() {
 
   function downloadCsvFromRows(rows: ContributionRow[], filename?: string) {
     if (!rows || rows.length === 0) return;
-    const headers = ['Repository', 'Member', 'Date', 'Contributions', 'Added Lines', 'Removed Lines'];
+    const headers = ['Repository', 'Member', 'Date', 'Contributions', 'Modified Lines', 'Optimized Lines'];
     const csvData = rows.map(row => [
       row.repository,
       formatMemberLabel(row.member, row.memberDisplay),
@@ -1187,7 +1187,7 @@ export default function CenixGitHubReport() {
         {reportData && (
           <div>
             <div className="bg-white shadow rounded">
-              <div className="flex flex-col gap-3 border-b border-gray-200 px-6 py-4 sm:flex-row sm:items-end sm:justify-between">
+              <div className="flex flex-col gap-3 border-b border-gray-200 px-6 py-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">Contribution details</p>
                   <p className="text-xs text-gray-500">Filter by member to focus results.</p>
@@ -1227,10 +1227,10 @@ export default function CenixGitHubReport() {
                       <SortHeaderButton column="contributions" label="Contributions" align="right" />
                     </th>
                     <th className="px-6 py-3 text-right">
-                      <SortHeaderButton column="addedLines" label="Added Lines" align="right" />
+                      <SortHeaderButton column="addedLines" label="Modified Lines" align="right" />
                     </th>
                     <th className="px-6 py-3 text-right">
-                      <SortHeaderButton column="removedLines" label="Removed Lines" align="right" />
+                      <SortHeaderButton column="removedLines" label="Optimized Lines" align="right" />
                     </th>
                   </tr>
                 </thead>
