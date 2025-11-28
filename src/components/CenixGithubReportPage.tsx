@@ -120,6 +120,7 @@ export default function CenixGitHubReport() {
   const [rowDetails, setRowDetails] = useState<Record<string, PullRequestDetailRow[]>>({});
   const [rowDetailsLoading, setRowDetailsLoading] = useState<Record<string, boolean>>({});
   const [rowDetailsErrors, setRowDetailsErrors] = useState<Record<string, string | null>>({});
+  const [memberFilter, setMemberFilter] = useState<string>('all');
 
   // Load user data on mount
   useEffect(() => {
@@ -294,6 +295,32 @@ export default function CenixGitHubReport() {
     if (!reportData?.rows) return [];
     return sortRows(reportData.rows);
   }, [reportData, sortRows]);
+
+  const tableMemberOptions = useMemo(() => {
+    if (!reportData?.rows) return [];
+    const memberMap = new Map<string, string>();
+    reportData.rows.forEach((row) => {
+      if (!memberMap.has(row.member)) {
+        memberMap.set(row.member, formatMemberLabel(row.member, row.memberDisplay));
+      }
+    });
+    return Array.from(memberMap.entries())
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([member, label]) => ({ member, label }));
+  }, [reportData]);
+
+  const filteredTableRows = useMemo(() => {
+    if (memberFilter === 'all') return sortedRows;
+    return sortedRows.filter((row) => row.member === memberFilter);
+  }, [sortedRows, memberFilter]);
+
+  useEffect(() => {
+    if (memberFilter === 'all') return;
+    const exists = tableMemberOptions.some((option) => option.member === memberFilter);
+    if (!exists) {
+      setMemberFilter('all');
+    }
+  }, [memberFilter, tableMemberOptions]);
 
   const chartData = useMemo(() => {
     if (!graphData) return [];
@@ -1159,8 +1186,31 @@ export default function CenixGitHubReport() {
         {/* Results table */}
         {reportData && (
           <div>
-            <div className="bg-white shadow rounded overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+            <div className="bg-white shadow rounded">
+              <div className="flex flex-col gap-3 border-b border-gray-200 px-6 py-4 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">Contribution details</p>
+                  <p className="text-xs text-gray-500">Filter by member to focus results.</p>
+                </div>
+                <label className="w-full text-sm font-medium text-gray-700 sm:w-64">
+                  Member filter
+                  <select
+                    value={memberFilter}
+                    onChange={(event) => setMemberFilter(event.target.value)}
+                    className="mt-1 w-full rounded border border-gray-300 bg-white p-2 text-sm text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    aria-label="Filter contributions table by member"
+                  >
+                    <option value="all">All members</option>
+                    {tableMemberOptions.map((option) => (
+                      <option key={option.member} value={option.member}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-6 py-3 text-left">
@@ -1185,7 +1235,7 @@ export default function CenixGitHubReport() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {sortedRows.map((row, i) => {
+                  {filteredTableRows.map((row, i) => {
                     const rowKey = makeRowKey(row);
                     const isExpanded = expandedRowKey === rowKey;
                     const detailRows = rowDetails[rowKey] ?? [];
@@ -1290,8 +1340,16 @@ export default function CenixGitHubReport() {
                       </React.Fragment>
                     );
                   })}
+                  {filteredTableRows.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-600">
+                        No contributions found for this member.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
+              </div>
             </div>
 
             {/* Pagination */}
@@ -1479,6 +1537,16 @@ function BarChart({
   const height = data.length * (barHeight + gap) + 24 ;
   const values = data.map(d => d[metric] ?? 0);
   const max = Math.max(1, ...values);
+  const medalLabels = ['🥇', '🥈', '🥉'];
+  const medalAssignments = new Map<string, string>();
+  [...data]
+    .sort((a, b) => (b[metric] ?? 0) - (a[metric] ?? 0))
+    .slice(0, 3)
+    .forEach((entry, index) => {
+      if (medalLabels[index]) {
+        medalAssignments.set(entry.member, medalLabels[index]);
+      }
+    });
 
   return (
     <svg width={chartWidth} height={height} viewBox={`0 0 ${chartWidth+10} ${height +20}`} role="img" aria-label={`Top members by ${metricLabel}`}>
@@ -1487,12 +1555,19 @@ function BarChart({
         const value = d[metric] ?? 0;
         const w = Math.round((value / max) * chartInnerWidth);
         const label = formatMemberLabel(d.member, d.memberDisplay);
+        const medalLabel = medalAssignments.get(d.member);
+        const isTopThree = i < 3;
+        const fontSize = isTopThree ? 14 : 12;
+        const medalFontSize = isTopThree ? 25 : 16;
         return (
           <g key={d.member}>
-            <text x={8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{label}</text>
+            {medalLabel && (
+              <text x={8} y={y + barHeight / 2 + 6} fontSize={medalFontSize} fill="#111">{medalLabel}</text>
+            )}
+            <text x="45" y={y + barHeight / 2 + 4} fontSize={fontSize} fill="#111" fontWeight={isTopThree ? 600 : 400}>{label}</text>
             <rect x={paddingLeft} y={y} width={chartInnerWidth} height={barHeight} fill="#f1f5f9" rx={4} />
             <rect x={paddingLeft} y={y} width={w} height={barHeight} fill="#4f46e5" rx={4} />
-            <text x={paddingLeft + chartInnerWidth + 8} y={y + barHeight / 2 + 4} fontSize={12} fill="#111">{value}</text>
+            <text x={paddingLeft + chartInnerWidth + 8} y={y + barHeight / 2 + 4} fontSize={fontSize} fill="#111" fontWeight={isTopThree ? 600 : 400}>{value}</text>
           </g>
         );
       })}
