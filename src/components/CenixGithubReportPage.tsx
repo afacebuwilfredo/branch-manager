@@ -90,12 +90,14 @@ type LineSeriesPoint = {
 type MemberLineSeries = {
   member: string;
   memberDisplay?: string | null;
+  memberCompany?: string | null;
   points: LineSeriesPoint[];
 };
 
 type GraphAggregateRow = {
   member: string;
   memberDisplay?: string | null;
+  memberCompany?: string | null;
   contributions: number;
   addedLines: number;
   removedLines: number;
@@ -382,6 +384,7 @@ const [graphData, setGraphData] = useState<GraphAggregateRow[] | null>(null);
   const [graphType, setGraphType] = useState<GraphType>('bar');
   const [showAxes, setShowAxes] = useState(true);
   const [visibleMembers, setVisibleMembers] = useState<Set<string>>(new Set());
+  const [graphCompanyFilter, setGraphCompanyFilter] = useState<string>('all');
 
   const [graphBuildProgress, setGraphBuildProgress] = useState<{ label: string; processed: number; total: number } | null>(null);
   const [exportingTasks, setExportingTasks] = useState(false);
@@ -508,12 +511,32 @@ const metricOptions: GraphMetric[] = [
     return Array.from(unique);
   }, [graphData, lineSeries]);
 
-  const memberLabelMap = useMemo(() => {
-    const map = new Map<string, string>();
-    graphData?.forEach(row => map.set(row.member, formatMemberLabel(row.member, row.memberDisplay)));
-    lineSeries?.forEach(series => map.set(series.member, formatMemberLabel(series.member, series.memberDisplay)));
-    return map;
-  }, [graphData, lineSeries]);
+const memberCompanyMap = useMemo(() => {
+  const map = new Map<string, string | null>();
+  graphData?.forEach((row) => map.set(row.member, row.memberCompany ?? null));
+  lineSeries?.forEach((series) => {
+    if (!map.has(series.member)) {
+      map.set(series.member, series.memberCompany ?? null);
+    }
+  });
+  return map;
+}, [graphData, lineSeries]);
+
+const companyOptions = useMemo(() => {
+  const options = new Set<string>();
+  memberCompanyMap.forEach((company) => {
+    const label = company && company.trim().length > 0 ? company.trim() : 'Unknown';
+    options.add(label);
+  });
+  return Array.from(options).sort((a, b) => a.localeCompare(b));
+}, [memberCompanyMap]);
+
+const memberLabelMap = useMemo(() => {
+  const map = new Map<string, string>();
+  graphData?.forEach((row) => map.set(row.member, formatMemberLabel(row.member, row.memberDisplay)));
+  lineSeries?.forEach((series) => map.set(series.member, formatMemberLabel(series.member, series.memberDisplay)));
+  return map;
+}, [graphData, lineSeries]);
 
   useEffect(() => {
     if (!allMembers.length) return;
@@ -535,12 +558,36 @@ const metricOptions: GraphMetric[] = [
   }, [allMembers]);
 
   const activeMembers = useMemo(() => {
-    if (!allMembers.length) return new Set<string>();
-    if (!visibleMembers || visibleMembers.size === 0) {
+  if (!allMembers.length) return new Set<string>();
+  const companyFiltered = (() => {
+    if (graphCompanyFilter === 'all') {
       return new Set(allMembers);
     }
-    return visibleMembers;
-  }, [allMembers, visibleMembers]);
+    const filtered = allMembers.filter((member) => {
+      const company = memberCompanyMap.get(member);
+      const label = company && company.trim().length > 0 ? company.trim() : 'Unknown';
+      return label === graphCompanyFilter;
+    });
+    return new Set(filtered);
+  })();
+
+  if (!visibleMembers || visibleMembers.size === 0) {
+    return companyFiltered.size > 0 ? companyFiltered : new Set(allMembers);
+  }
+
+  const intersection = new Set<string>();
+  companyFiltered.forEach((member) => {
+    if (visibleMembers.has(member)) {
+      intersection.add(member);
+    }
+  });
+
+  if (intersection.size === 0) {
+    return companyFiltered.size > 0 ? companyFiltered : visibleMembers;
+  }
+
+  return intersection;
+}, [allMembers, visibleMembers, memberCompanyMap, graphCompanyFilter]);
 
   const filteredChartData = useMemo(() => {
     if (!chartData.length) return [];
@@ -634,7 +681,7 @@ const metricOptions: GraphMetric[] = [
 
   function downloadCsvFromRows(rows: ContributionRow[], filename?: string) {
     if (!rows || rows.length === 0) return;
-    const headers = ['Repository', 'Row ID', 'Member', 'Company', 'Date', 'Contributions', 'Modified Lines', 'Optimized Lines'];
+    const headers = ['Repository', 'Row ID', 'Member', 'Department', 'Date', 'Contributions', 'Modified Lines', 'Optimized Lines'];
     const csvData = rows.map(row => [
       row.repository,
       getContributionRowId(row),
@@ -866,6 +913,7 @@ const metricOptions: GraphMetric[] = [
       string,
       {
         memberDisplay?: string | null;
+        memberCompany?: string | null;
         contributions: number;
         addedLines: number;
         removedLines: number;
@@ -897,6 +945,7 @@ const metricOptions: GraphMetric[] = [
       const arr = Array.from(memberMap.entries()).map(([memberKey, metrics]) => ({
         member: memberKey,
         memberDisplay: metrics.memberDisplay ?? memberKey,
+        memberCompany: metrics.memberCompany ?? null,
         contributions: metrics.contributions,
         addedLines: metrics.addedLines,
         removedLines: metrics.removedLines,
@@ -910,6 +959,7 @@ const metricOptions: GraphMetric[] = [
       const lines = Array.from(timelineMap.entries()).map(([memberKey, datesMap]) => ({
         member: memberKey,
         memberDisplay: memberMap.get(memberKey)?.memberDisplay ?? memberKey,
+        memberCompany: memberMap.get(memberKey)?.memberCompany ?? null,
         points: Array.from(datesMap.entries())
           .map(([date, stats]) => ({
             date,
@@ -932,6 +982,7 @@ const metricOptions: GraphMetric[] = [
       const displayLabel = formatMemberLabel(r.member, r.memberDisplay);
       const existing = memberMap.get(memberKey) ?? {
         memberDisplay: displayLabel,
+        memberCompany: r.memberCompany?.trim() ?? null,
         contributions: 0,
         addedLines: 0,
         removedLines: 0,
@@ -942,6 +993,9 @@ const metricOptions: GraphMetric[] = [
       };
       if (!existing.memberDisplay && displayLabel) {
         existing.memberDisplay = displayLabel;
+      }
+      if (!existing.memberCompany && r.memberCompany?.trim()) {
+        existing.memberCompany = r.memberCompany.trim();
       }
       existing.contributions += r.contributions;
       existing.addedLines += r.addedLines;
@@ -1510,7 +1564,7 @@ const metricOptions: GraphMetric[] = [
                       <SortHeaderButton column="member" label="Member" />
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                      Company
+                      Department
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Task</th>
                     <th className="px-6 py-3 text-right">
@@ -1743,6 +1797,23 @@ const metricOptions: GraphMetric[] = [
                   <div className="flex items-center gap-3 text-xs">
                     <button type="button" onClick={handleSelectAllMembers} className="text-indigo-600 hover:underline">Select all</button>
                     <button type="button" onClick={handleClearMembers} className="text-indigo-600 hover:underline">Clear all</button>
+                    {companyOptions.length > 0 && (
+                      <label className="flex items-center gap-2">
+                        <span>Department</span>
+                        <select
+                          value={graphCompanyFilter}
+                          onChange={(event) => setGraphCompanyFilter(event.target.value)}
+                          className="rounded border border-gray-300 bg-white px-2 py-1 text-xs focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        >
+                          <option value="all">All</option>
+                          {companyOptions.map((company) => (
+                            <option key={company} value={company}>
+                              {company}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
                   </div>
                 </div>
                 <div className="max-h-40 overflow-y-auto text-sm">
