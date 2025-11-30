@@ -88,10 +88,19 @@ type PullRequestDetailRow = {
   task: string;
   branchName: string;
   fileChanges: number;
+  filesAdded: number;
+  filesDeleted: number;
+  filesModified: number;
   commitName: string;
   approvedBy: string | null;
   date: string;
   pullRequestUrl: string;
+};
+
+type PullRequestFileCounts = {
+  filesAdded: number;
+  filesDeleted: number;
+  filesModified: number;
 };
 
 const performGraphQLRequest = async <T>(
@@ -142,7 +151,7 @@ const getLatestApproval = (node: PullRequestNode): string | null => {
   return approvals[0]!.author!.login ?? null;
 };
 
-const transformNodeToRow = (node: PullRequestNode): PullRequestDetailRow => {
+const transformNodeToRow = (node: PullRequestNode, fileCounts: PullRequestFileCounts): PullRequestDetailRow => {
   const latestCommit = node.commits?.nodes?.find((commitNode) => Boolean(commitNode?.commit))?.commit;
   const commitHeadline = latestCommit?.messageHeadline?.trim();
   const date = node.mergedAt ?? node.updatedAt ?? node.createdAt;
@@ -152,11 +161,75 @@ const transformNodeToRow = (node: PullRequestNode): PullRequestDetailRow => {
     task: `#${node.number}`,
     branchName: node.headRefName ?? 'unknown',
     fileChanges: node.changedFiles ?? 0,
+    filesAdded: fileCounts.filesAdded,
+    filesDeleted: fileCounts.filesDeleted,
+    filesModified: fileCounts.filesModified,
     commitName: commitHeadline && commitHeadline.length > 0 ? commitHeadline : node.title,
     approvedBy: getLatestApproval(node),
     date,
     pullRequestUrl: node.url
   };
+};
+
+const fetchPullRequestFileCounts = async (
+  token: string,
+  repoFullName: string,
+  pullRequestNumber: number
+): Promise<PullRequestFileCounts> => {
+  const [owner, name] = repoFullName.split('/');
+  if (!owner || !name) {
+    return { filesAdded: 0, filesDeleted: 0, filesModified: 0 };
+  }
+
+  let page = 1;
+  const perPage = 100;
+  const totals: PullRequestFileCounts = {
+    filesAdded: 0,
+    filesDeleted: 0,
+    filesModified: 0
+  };
+
+  while (true) {
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${name}/pulls/${pullRequestNumber}/files?per_page=${perPage}&page=${page}`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `bearer ${token}`,
+          Accept: 'application/vnd.github+json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `Failed to load files for pull request #${pullRequestNumber}`);
+    }
+
+    const files = (await response.json()) as Array<{ status?: string | null }>;
+    if (!Array.isArray(files) || files.length === 0) {
+      break;
+    }
+
+    files.forEach((file) => {
+      const status = (file.status ?? '').toLowerCase();
+      if (status === 'added') {
+        totals.filesAdded += 1;
+      } else if (status === 'removed') {
+        totals.filesDeleted += 1;
+      } else {
+        totals.filesModified += 1;
+      }
+    });
+
+    if (files.length < perPage) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  return totals;
 };
 
 const buildSearchQuery = (repoFullName: string, member: string, date: string) =>
@@ -202,11 +275,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
       const nodes: Array<PullRequestNode | null> = data.search?.nodes ?? [];
-      nodes
-        .filter((node: PullRequestNode | null): node is PullRequestNode => Boolean(node))
-        .forEach((node: PullRequestNode) => {
-          rows.push(transformNodeToRow(node));
-        });
+      const validNodes = nodes.filter(
+        (node: PullRequestNode | null): node is PullRequestNode => Boolean(node)
+      );
+
+      for (const node of validNodes) {
+        let fileCounts: PullRequestFileCounts = {
+          filesAdded: 0,
+          filesDeleted: 0,
+          filesModified: 0
+        };
+
+        try {
+          fileCounts = await fetchPullRequestFileCounts(token, repository, node.number);
+        } catch (fileError) {
+          console.error(
+            `Failed to fetch file counts for ${repository} PR #${node.number}:`,
+            fileError
+          );
+        }
+
+        rows.push(transformNodeToRow(node, fileCounts));
+      }
 
       const pageInfo: { hasNextPage: boolean; endCursor?: string | null } | undefined = data.search?.pageInfo;
       if (!pageInfo?.hasNextPage || !pageInfo.endCursor) {
