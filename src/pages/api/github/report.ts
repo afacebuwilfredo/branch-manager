@@ -20,7 +20,7 @@ const CONTRIBUTIONS_QUERY = `
               pageInfo { hasNextPage endCursor }
               nodes {
                 author {
-                  user { login }
+                  user { login company }
                   email
                   name
                 }
@@ -48,6 +48,7 @@ interface GitHubGraphQLResponse<T> {
 interface CommitAuthor {
   user?: {
     login: string;
+    company?: string | null;
   };
   email?: string;
   name?: string;
@@ -79,9 +80,12 @@ interface ContributionsResponse {
 }
 
 type ContributionRow = {
+  id: string;
   repository: string;
   member: string;
   memberDisplay: string;
+  memberLogin?: string | null;
+  memberCompany?: string | null;
   date: string;
   contributions: number;
   addedLines: number;
@@ -170,6 +174,8 @@ async function fetchContributions(
         string,
         {
           memberDisplay?: string;
+          memberLogin?: string | null;
+          memberCompany?: string | null;
           contributions: number;
           addedLines: number;
           removedLines: number;
@@ -178,7 +184,7 @@ async function fetchContributions(
     >();
 
     allNodes.forEach((commit: CommitNode) => {
-      const authorLogin = commit.author.user?.login?.trim();
+      const authorLogin = commit.author.user?.login?.trim() || null;
       const authorEmail = commit.author.email?.trim();
       const authorName = commit.author.name?.trim();
       const memberId = authorLogin || authorEmail || authorName || 'unknown';
@@ -193,12 +199,20 @@ async function fetchContributions(
       const dateMap = contributions.get(date)!;
       const stats = dateMap.get(memberId) ?? {
         memberDisplay,
+        memberLogin: authorLogin,
+        memberCompany: commit.author.user?.company?.trim() || null,
         contributions: 0,
         addedLines: 0,
         removedLines: 0,
       };
       if (!stats.memberDisplay && memberDisplay) {
         stats.memberDisplay = memberDisplay;
+      }
+      if (!stats.memberLogin && authorLogin) {
+        stats.memberLogin = authorLogin;
+      }
+      if (!stats.memberCompany && commit.author.user?.company) {
+        stats.memberCompany = commit.author.user.company.trim() || null;
       }
       stats.contributions += 1;
       stats.addedLines += additions;
@@ -210,10 +224,18 @@ async function fetchContributions(
 
     for (const [date, authors] of contributions) {
       for (const [author, stats] of authors) {
+        if (!stats.memberLogin) {
+          continue;
+        }
+        const memberKey = stats.memberLogin || author;
+        const rowId = `${owner}/${name}|${memberKey}|${date}`;
         rows.push({
+          id: rowId,
           repository: `${owner}/${name}`,
           member: author,
           memberDisplay: stats.memberDisplay ?? author,
+          memberLogin: stats.memberLogin ?? null,
+          memberCompany: stats.memberCompany ?? null,
           date,
           contributions: stats.contributions,
           addedLines: stats.addedLines,
