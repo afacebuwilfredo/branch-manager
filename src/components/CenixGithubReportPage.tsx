@@ -47,6 +47,15 @@ type PullRequestDetailRow = {
   pullRequestUrl: string;
 };
 
+const isAfafiloRepo = (repository: string) => repository.trim().toLowerCase().startsWith("afafilo/");
+const filterDetailsForRepository = (repository: string, details?: PullRequestDetailRow[]) => {
+  const safeDetails = details ?? [];
+  if (!isAfafiloRepo(repository)) {
+    return safeDetails;
+  }
+  return safeDetails.filter((detail) => detail.branchName?.trim().toLowerCase() === "staging");
+};
+
 const detailNumberFormatter = new Intl.NumberFormat();
 const detailDateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: 'medium',
@@ -395,8 +404,8 @@ const metricLabels: Record<GraphMetric, string> = {
   contributions: 'Commits',
   addedLines: 'Modified Lines',
   removedLines: 'Optimized Lines',
-  filesAdded: 'Files Added',
-  filesDeleted: 'Files Deleted',
+  filesAdded: 'New files',
+  filesDeleted: 'Files Optimized',
   filesModified: 'Files Modified'
 };
 const metricOptions: GraphMetric[] = [
@@ -815,8 +824,10 @@ const memberLabelMap = useMemo(() => {
           }
         }
 
-        if (detailRows.length > 0) {
-          detailRows.forEach((detail) => {
+        const stagingDetails = filterDetailsForRepository(contributionRow.repository, detailRows);
+
+        if (stagingDetails.length > 0) {
+          stagingDetails.forEach((detail) => {
             taskRecords.push({
               repository: contributionRow.repository,
               member: memberLabel,
@@ -1025,7 +1036,7 @@ const memberLabelMap = useMemo(() => {
         return detailCache.get(cacheKey)!;
       }
       if (rowDetails[cacheKey]) {
-        const cachedRows = rowDetails[cacheKey] ?? [];
+        const cachedRows = filterDetailsForRepository(row.repository, rowDetails[cacheKey] ?? []);
         detailCache.set(cacheKey, cachedRows);
         return cachedRows;
       }
@@ -1046,7 +1057,7 @@ const memberLabelMap = useMemo(() => {
         }
 
         const data = (await response.json()) as { rows: PullRequestDetailRow[] };
-        const rows = data.rows ?? [];
+        const rows = filterDetailsForRepository(row.repository, data.rows ?? []);
         detailCache.set(cacheKey, rows);
         return rows;
       } catch (error) {
@@ -1290,7 +1301,8 @@ const memberLabelMap = useMemo(() => {
       }
 
       const data = (await response.json()) as { rows: PullRequestDetailRow[] };
-      setRowDetails((prev) => ({ ...prev, [key]: data.rows }));
+      const rows = data.rows ?? [];
+      setRowDetails((prev) => ({ ...prev, [key]: rows }));
     } catch (err) {
       setRowDetailsErrors((prev) => ({
         ...prev,
@@ -1585,11 +1597,14 @@ const memberLabelMap = useMemo(() => {
                   {filteredTableRows.map((row, i) => {
                     const rowKey = getContributionRowId(row);
                     const isExpanded = expandedRowKey === rowKey;
-                    const detailRows = rowDetails[rowKey] ?? [];
+                    const storedDetailRows = rowDetails[rowKey];
+                    const detailRows = storedDetailRows ?? [];
+                    const filteredDetailRows = filterDetailsForRepository(row.repository, detailRows);
                     const detailLoading = rowDetailsLoading[rowKey];
                     const detailError = rowDetailsErrors[rowKey];
                     const memberName = formatMemberLabel(row.member, row.memberDisplay);
                     const companyName = row.memberCompany?.trim() ?? '—';
+                    const hasFetchedDetails = storedDetailRows !== undefined;
 
                     return (
                       <React.Fragment key={rowKey}>
@@ -1609,11 +1624,9 @@ const memberLabelMap = useMemo(() => {
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">
                             {detailLoading
                               ? '…'
-                              : detailRows.length > 0
-                                ? detailRows.length
-                                : rowDetails[rowKey]
-                                  ? 0
-                                  : '—'}
+                              : hasFetchedDetails
+                                ? filteredDetailRows.length
+                                : '—'}
                           </td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.contributions}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.addedLines}</td>
@@ -1656,8 +1669,8 @@ const memberLabelMap = useMemo(() => {
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Task</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Branch name</th>
                                           <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">File changes</th>
-                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files added</th>
-                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files deleted</th>
+                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">New files</th>
+                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files Optimized</th>
                                           <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files modified</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Commit name</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Approved by</th>
