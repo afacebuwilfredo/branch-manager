@@ -38,6 +38,9 @@ type PullRequestDetailRow = {
   task: string;
   branchName: string;
   fileChanges: number;
+  filesAdded: number;
+  filesDeleted: number;
+  filesModified: number;
   commitName: string;
   approvedBy: string | null;
   date: string;
@@ -59,7 +62,14 @@ const formatDetailDate = (value: string) => {
   return detailDateFormatter.format(parsed);
 };
 
-type GraphMetric = 'contributions' | 'addedLines' | 'removedLines' | 'tasks';
+type GraphMetric =
+  | 'tasks'
+  | 'contributions'
+  | 'addedLines'
+  | 'removedLines'
+  | 'filesAdded'
+  | 'filesDeleted'
+  | 'filesModified';
 type GraphType = 'bar' | 'line' | 'pie';
 
 type SortColumn = 'repository' | 'member' | 'date' | 'contributions' | 'addedLines' | 'removedLines';
@@ -72,12 +82,27 @@ type LineSeriesPoint = {
   addedLines: number;
   removedLines: number;
   tasks: number;
+  filesAdded: number;
+  filesDeleted: number;
+  filesModified: number;
 };
 
 type MemberLineSeries = {
   member: string;
   memberDisplay?: string | null;
   points: LineSeriesPoint[];
+};
+
+type GraphAggregateRow = {
+  member: string;
+  memberDisplay?: string | null;
+  contributions: number;
+  addedLines: number;
+  removedLines: number;
+  tasks: number;
+  filesAdded: number;
+  filesDeleted: number;
+  filesModified: number;
 };
 
 type ReportResponse = {
@@ -350,16 +375,7 @@ export default function CenixGitHubReport() {
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ fetched: number; total?: number } | null>(null);
   const [graphLoading, setGraphLoading] = useState(false);
-  const [graphData, setGraphData] = useState<
-    {
-      member: string;
-      memberDisplay?: string | null;
-      contributions: number;
-      addedLines: number;
-      removedLines: number;
-      tasks: number;
-    }[] | null
-  >(null);
+const [graphData, setGraphData] = useState<GraphAggregateRow[] | null>(null);
   const [lineSeries, setLineSeries] = useState<MemberLineSeries[] | null>(null);
   const [showGraph, setShowGraph] = useState(false);
   const [graphMetric, setGraphMetric] = useState<GraphMetric>('contributions');
@@ -371,13 +387,24 @@ export default function CenixGitHubReport() {
   const [exportingTasks, setExportingTasks] = useState(false);
   const [exportTasksProgress, setExportTasksProgress] = useState<{ processed: number; total: number } | null>(null);
 
-  const metricLabels: Record<GraphMetric, string> = {
-    contributions: 'Commits',
-    addedLines: 'Modified Lines',
-    removedLines: 'Optimized Lines',
-    tasks: 'Tasks'
-  };
-  const metricOptions: GraphMetric[] = ['tasks','contributions', 'addedLines', 'removedLines'];
+const metricLabels: Record<GraphMetric, string> = {
+  tasks: 'Tasks',
+  contributions: 'Commits',
+  addedLines: 'Modified Lines',
+  removedLines: 'Optimized Lines',
+  filesAdded: 'Files Added',
+  filesDeleted: 'Files Deleted',
+  filesModified: 'Files Modified'
+};
+const metricOptions: GraphMetric[] = [
+  'tasks',
+  'contributions',
+  'addedLines',
+  'removedLines',
+  'filesAdded',
+  'filesDeleted',
+  'filesModified'
+];
   const graphTypeOptions: { value: GraphType; label: string }[] = [
     { value: 'bar', label: 'Bar' },
     { value: 'line', label: 'Line' },
@@ -843,11 +870,25 @@ export default function CenixGitHubReport() {
         addedLines: number;
         removedLines: number;
         tasks: number;
+        filesAdded: number;
+        filesDeleted: number;
+        filesModified: number;
       }
     >();
     const timelineMap = new Map<
       string,
-      Map<string, { contributions: number; addedLines: number; removedLines: number; tasks: number }>
+      Map<
+        string,
+        {
+          contributions: number;
+          addedLines: number;
+          removedLines: number;
+          tasks: number;
+          filesAdded: number;
+          filesDeleted: number;
+          filesModified: number;
+        }
+      >
     >();
     const uniqueRowMap = new Map<string, ContributionRow>();
     const detailCache = new Map<string, PullRequestDetailRow[]>();
@@ -859,7 +900,10 @@ export default function CenixGitHubReport() {
         contributions: metrics.contributions,
         addedLines: metrics.addedLines,
         removedLines: metrics.removedLines,
-        tasks: metrics.tasks
+        tasks: metrics.tasks,
+        filesAdded: metrics.filesAdded,
+        filesDeleted: metrics.filesDeleted,
+        filesModified: metrics.filesModified
       }));
       setGraphData(arr);
 
@@ -872,7 +916,10 @@ export default function CenixGitHubReport() {
             contributions: stats.contributions,
             addedLines: stats.addedLines,
             removedLines: stats.removedLines,
-            tasks: stats.tasks
+            tasks: stats.tasks,
+            filesAdded: stats.filesAdded,
+            filesDeleted: stats.filesDeleted,
+            filesModified: stats.filesModified
           }))
           .sort((a, b) => a.date.localeCompare(b.date))
       }));
@@ -888,7 +935,10 @@ export default function CenixGitHubReport() {
         contributions: 0,
         addedLines: 0,
         removedLines: 0,
-        tasks: 0
+        tasks: 0,
+        filesAdded: 0,
+        filesDeleted: 0,
+        filesModified: 0
       };
       if (!existing.memberDisplay && displayLabel) {
         existing.memberDisplay = displayLabel;
@@ -903,7 +953,10 @@ export default function CenixGitHubReport() {
         contributions: 0,
         addedLines: 0,
         removedLines: 0,
-        tasks: 0
+        tasks: 0,
+        filesAdded: 0,
+        filesDeleted: 0,
+        filesModified: 0
       };
       dayStats.contributions += r.contributions;
       dayStats.addedLines += r.addedLines;
@@ -916,6 +969,11 @@ export default function CenixGitHubReport() {
       const cacheKey = getContributionRowId(row);
       if (detailCache.has(cacheKey)) {
         return detailCache.get(cacheKey)!;
+      }
+      if (rowDetails[cacheKey]) {
+        const cachedRows = rowDetails[cacheKey] ?? [];
+        detailCache.set(cacheKey, cachedRows);
+        return cachedRows;
       }
 
       try {
@@ -1024,12 +1082,25 @@ export default function CenixGitHubReport() {
             }
             const uniqueDetails = Array.from(new Map(detailRows.map((detail) => [detail.id, detail])).values());
             const taskCount = uniqueDetails.length;
+            const fileTotals = uniqueDetails.reduce(
+              (acc, detail) => {
+                acc.filesAdded += detail.filesAdded ?? 0;
+                acc.filesDeleted += detail.filesDeleted ?? 0;
+                acc.filesModified += detail.filesModified ?? 0;
+                return acc;
+              },
+              { filesAdded: 0, filesDeleted: 0, filesModified: 0 }
+            );
 
-            if (taskCount > 0) {
-              const memberKey = contributionRow.memberKey ?? buildMemberKey(contributionRow.member, contributionRow.memberDisplay);
+            if (taskCount > 0 || fileTotals.filesAdded > 0 || fileTotals.filesDeleted > 0 || fileTotals.filesModified > 0) {
+              const memberKey =
+                contributionRow.memberKey ?? buildMemberKey(contributionRow.member, contributionRow.memberDisplay);
               const metrics = memberMap.get(memberKey);
               if (metrics) {
                 metrics.tasks += taskCount;
+                metrics.filesAdded += fileTotals.filesAdded;
+                metrics.filesDeleted += fileTotals.filesDeleted;
+                metrics.filesModified += fileTotals.filesModified;
                 memberMap.set(memberKey, metrics);
               }
 
@@ -1039,9 +1110,15 @@ export default function CenixGitHubReport() {
                 contributions: 0,
                 addedLines: 0,
                 removedLines: 0,
-                tasks: 0
+                tasks: 0,
+                filesAdded: 0,
+                filesDeleted: 0,
+                filesModified: 0
               };
               stats.tasks += taskCount;
+              stats.filesAdded += fileTotals.filesAdded;
+              stats.filesDeleted += fileTotals.filesDeleted;
+              stats.filesModified += fileTotals.filesModified;
               timeline.set(dateKey, stats);
               timelineMap.set(memberKey, timeline);
             }
@@ -1067,7 +1144,7 @@ export default function CenixGitHubReport() {
       setGraphLoading(false);
       setGraphBuildProgress(null);
     }
-  }, [reportData, selectedRepos, showGraph, startDate, endDate, rowMatchesMemberFilter]);
+  }, [reportData, selectedRepos, showGraph, startDate, endDate, rowMatchesMemberFilter, rowDetails]);
 
   // Export all pages by fetching all pages from server and concatenating rows
   async function exportAllPagesCsv() {
@@ -1525,6 +1602,9 @@ export default function CenixGitHubReport() {
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Task</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Branch name</th>
                                           <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">File changes</th>
+                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files added</th>
+                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files deleted</th>
+                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files modified</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Commit name</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Approved by</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Date</th>
@@ -1543,6 +1623,9 @@ export default function CenixGitHubReport() {
                                             <td className="px-4 py-2 font-mono text-gray-900">{detail.task}</td>
                                             <td className="px-4 py-2 text-gray-900">{detail.branchName}</td>
                                             <td className="px-4 py-2 text-right text-gray-900">{detailNumberFormatter.format(detail.fileChanges)}</td>
+                                            <td className="px-4 py-2 text-right text-gray-900">{detailNumberFormatter.format(detail.filesAdded ?? 0)}</td>
+                                            <td className="px-4 py-2 text-right text-gray-900">{detailNumberFormatter.format(detail.filesDeleted ?? 0)}</td>
+                                            <td className="px-4 py-2 text-right text-gray-900">{detailNumberFormatter.format(detail.filesModified ?? 0)}</td>
                                             <td className="px-4 py-2 text-gray-800">{detail.commitName}</td>
                                             <td className="px-4 py-2 text-gray-700">{detail.approvedBy ?? '—'}</td>
                                             <td className="px-4 py-2 text-gray-600">{formatDetailDate(detail.date)}</td>
@@ -1743,6 +1826,9 @@ function BarChart({
     addedLines: number;
     removedLines: number;
     tasks: number;
+    filesAdded: number;
+    filesDeleted: number;
+    filesModified: number;
   }[];
   metric: GraphMetric;
   metricLabel: string;
@@ -2019,6 +2105,9 @@ function PieChart({
     addedLines: number;
     removedLines: number;
     tasks: number;
+    filesAdded: number;
+    filesDeleted: number;
+    filesModified: number;
   }[];
   metric: GraphMetric;
   metricLabel: string;
