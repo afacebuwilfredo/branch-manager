@@ -20,13 +20,17 @@ type Repository = {
 };
 
 type ContributionRow = {
+  id: string;
   repository: string;
   member: string;
   memberDisplay?: string | null;
+  memberLogin?: string | null;
+  memberCompany?: string | null;
   date: string;
   contributions: number;
   addedLines: number;
   removedLines: number;
+  memberKey?: string;
 };
 
 type PullRequestDetailRow = {
@@ -83,9 +87,126 @@ type ReportResponse = {
   rows: ContributionRow[];
 };
 
-const makeRowKey = (row: ContributionRow) => `${row.repository}|${row.member}|${row.date}`;
+const makeRowKey = (row: ContributionRow) => {
+  const key = row.memberKey ?? buildMemberKey(row.member, row.memberDisplay);
+  return `${row.repository}|${key}|${row.date}`;
+};
+const getContributionRowId = (row: ContributionRow) => row.id ?? makeRowKey(row);
 const formatMemberLabel = (member: string, memberDisplay?: string | null) =>
   memberDisplay && memberDisplay.trim().length > 0 ? memberDisplay.trim() : member;
+const looksLikeGithubUsername = (value: string) => /^[a-z\d](?:[a-z\d-]{0,38})$/i.test(value);
+const normalizeIdentifier = (value?: string | null) =>
+  value ? value.toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+const aliasCanonicalMap = new Map<string, string>();
+let aliasIdCounter = 0;
+const resetMemberAliasCache = () => {
+  aliasCanonicalMap.clear();
+  aliasIdCounter = 0;
+};
+const buildMemberKey = (member?: string | null, memberDisplay?: string | null) => {
+  const normalizedMember = member?.trim() ?? "";
+  const normalizedDisplay = memberDisplay?.trim() ?? "";
+  if (normalizedMember && looksLikeGithubUsername(normalizedMember)) {
+    return normalizedMember.toLowerCase();
+  }
+  if (normalizedDisplay && looksLikeGithubUsername(normalizedDisplay)) {
+    return normalizedDisplay.toLowerCase();
+  }
+  if (normalizedMember) {
+    return normalizedMember.toLowerCase();
+  }
+  if (normalizedDisplay) {
+    return normalizedDisplay.toLowerCase();
+  }
+  return "unknown";
+};
+const normalizeContributionRow = (row: ContributionRow): ContributionRow => {
+  const rawMember = row.member?.trim() ?? "";
+  const rawDisplay = row.memberDisplay?.trim() ?? "";
+  const rawLogin = row.memberLogin?.trim() ?? "";
+  let memberValue = rawMember;
+  let displayValue: string | null = rawDisplay || null;
+  const loginCandidate = looksLikeGithubUsername(rawLogin) ? rawLogin : "";
+
+  if (loginCandidate) {
+    memberValue = loginCandidate;
+  }
+  if (rawMember && rawDisplay) {
+    if (!looksLikeGithubUsername(rawMember) && looksLikeGithubUsername(rawDisplay)) {
+      memberValue = rawDisplay;
+      displayValue = rawMember;
+    }
+  } else if (!rawMember && rawDisplay) {
+    if (looksLikeGithubUsername(rawDisplay)) {
+      memberValue = rawDisplay;
+      displayValue = null;
+    } else {
+      memberValue = rawDisplay;
+      displayValue = rawDisplay;
+    }
+  }
+
+  if (!memberValue && displayValue) {
+    memberValue = displayValue;
+  }
+  if (!displayValue) {
+    displayValue = memberValue;
+  }
+
+  const normalizedMember = normalizeIdentifier(memberValue);
+  const normalizedDisplay = normalizeIdentifier(displayValue);
+  const aliasCandidates = Array.from(
+    new Set([normalizedMember, normalizedDisplay].filter(Boolean)),
+  );
+
+  let canonical =
+    aliasCandidates
+      .map((alias) => aliasCanonicalMap.get(alias))
+      .find((value): value is string => Boolean(value)) ?? "";
+
+  if (!canonical) {
+    canonical = aliasCandidates[0] || `member-${++aliasIdCounter}`;
+  }
+
+  aliasCandidates.forEach((alias) => {
+    if (alias) {
+      aliasCanonicalMap.set(alias, canonical);
+    }
+  });
+
+  const normalizedCompany = row.memberCompany?.trim() ?? null;
+  const resolvedId = row.id ?? `${row.repository}|${canonical}|${row.date}`;
+
+  return {
+    ...row,
+    id: resolvedId,
+    member: memberValue,
+    memberDisplay: displayValue,
+    memberLogin: loginCandidate || null,
+    memberCompany: normalizedCompany,
+    memberKey: canonical,
+  };
+};
+const normalizeContributionRows = (rows?: ContributionRow[]) =>
+  (rows ?? [])
+    .map(normalizeContributionRow)
+    .filter((row) => Boolean(row.memberLogin));
+
+const resolveMemberIdentifier = (row: ContributionRow) => {
+  const login = row.memberLogin?.trim();
+  if (login && login.length > 0) {
+    return login;
+  }
+  const memberValue = row.member?.trim();
+  if (memberValue && memberValue.length > 0) {
+    return memberValue;
+  }
+  const displayValue = row.memberDisplay?.trim();
+  if (displayValue && displayValue.length > 0) {
+    return displayValue;
+  }
+  return "unknown";
+};
 
 export default function CenixGitHubReport() {
   // Authentication state
@@ -188,6 +309,7 @@ export default function CenixGitHubReport() {
 
   // Load report data
   async function fetchReport(pageNum = page) {
+    resetMemberAliasCache();
     try {
       setLoadingReport(true);
       setError(null);
@@ -214,7 +336,8 @@ export default function CenixGitHubReport() {
       }
 
       const data = await res.json();
-      setReportData(data);
+      const normalized = normalizeContributionRows(data.rows);
+      setReportData({ ...data, rows: normalized });
       setPage(pageNum);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report');
@@ -296,27 +419,49 @@ export default function CenixGitHubReport() {
     return sortRows(reportData.rows);
   }, [reportData, sortRows]);
 
+  const rowMatchesMemberFilter = useCallback(
+    (row: ContributionRow) => {
+      if (memberFilter === "all") {
+        return true;
+      }
+      const identifier = resolveMemberIdentifier(row);
+      return identifier === memberFilter;
+    },
+    [memberFilter],
+  );
+
   const tableMemberOptions = useMemo(() => {
     if (!reportData?.rows) return [];
     const memberMap = new Map<string, string>();
     reportData.rows.forEach((row) => {
-      if (!memberMap.has(row.member)) {
-        memberMap.set(row.member, formatMemberLabel(row.member, row.memberDisplay));
+      const key =
+        resolveMemberIdentifier(row) ||
+        row.memberKey ||
+        buildMemberKey(row.member, row.memberDisplay);
+      if (!memberMap.has(key)) {
+        const label = formatMemberLabel(row.member, row.memberDisplay) || "Unknown member";
+        memberMap.set(key, label);
       }
     });
     return Array.from(memberMap.entries())
-      .sort((a, b) => a[1].localeCompare(b[1]))
-      .map(([member, label]) => ({ member, label }));
+      .map(([key, label]) => ({ key, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
   }, [reportData]);
 
+  const selectedMemberLabel = useMemo(() => {
+    if (memberFilter === 'all') return null;
+    const option = tableMemberOptions.find((opt) => opt.key === memberFilter);
+    return option?.label ?? 'selected member';
+  }, [memberFilter, tableMemberOptions]);
+
   const filteredTableRows = useMemo(() => {
-    if (memberFilter === 'all') return sortedRows;
-    return sortedRows.filter((row) => row.member === memberFilter);
-  }, [sortedRows, memberFilter]);
+    if (memberFilter === "all") return sortedRows;
+    return sortedRows.filter((row) => rowMatchesMemberFilter(row));
+  }, [sortedRows, memberFilter, rowMatchesMemberFilter]);
 
   useEffect(() => {
     if (memberFilter === 'all') return;
-    const exists = tableMemberOptions.some((option) => option.member === memberFilter);
+    const exists = tableMemberOptions.some((option) => option.key === memberFilter);
     if (!exists) {
       setMemberFilter('all');
     }
@@ -394,6 +539,11 @@ export default function CenixGitHubReport() {
     return filtered.length > 0 ? filtered : baseLineSeries;
   }, [baseLineSeries, activeMembers]);
 
+  const shouldShowPagination =
+    memberFilter === 'all' &&
+    reportData !== null &&
+    reportData.totalRows > reportData.perPage;
+
   function handleSort(column: SortColumn) {
     setSortConfig((prev) => {
       if (prev.column === column) {
@@ -457,10 +607,12 @@ export default function CenixGitHubReport() {
 
   function downloadCsvFromRows(rows: ContributionRow[], filename?: string) {
     if (!rows || rows.length === 0) return;
-    const headers = ['Repository', 'Member', 'Date', 'Contributions', 'Modified Lines', 'Optimized Lines'];
+    const headers = ['Repository', 'Row ID', 'Member', 'Company', 'Date', 'Contributions', 'Modified Lines', 'Optimized Lines'];
     const csvData = rows.map(row => [
       row.repository,
+      getContributionRowId(row),
       formatMemberLabel(row.member, row.memberDisplay),
+      row.memberCompany ?? '',
       row.date,
       String(row.contributions),
       String(row.addedLines),
@@ -491,7 +643,10 @@ export default function CenixGitHubReport() {
     const allRows: ContributionRow[] = [];
 
     if (reportData.rows && reportData.rows.length > 0) {
-      allRows.push(...reportData.rows);
+      const initial = memberFilter === 'all'
+        ? reportData.rows
+        : reportData.rows.filter(rowMatchesMemberFilter);
+      allRows.push(...initial);
     }
 
     for (let p = 1; p <= pages; p++) {
@@ -516,7 +671,13 @@ export default function CenixGitHubReport() {
 
       const json: ReportResponse = await resp.json();
       if (json.rows && json.rows.length > 0) {
-        allRows.push(...json.rows);
+        const normalized = normalizeContributionRows(json.rows);
+        const matching = memberFilter === 'all'
+          ? normalized
+          : normalized.filter(rowMatchesMemberFilter);
+        if (matching.length > 0) {
+          allRows.push(...matching);
+        }
       }
     }
 
@@ -535,7 +696,7 @@ export default function CenixGitHubReport() {
         return;
       }
 
-      const uniqueRows = Array.from(new Map(allRows.map((row) => [makeRowKey(row), row])).values());
+      const uniqueRows = Array.from(new Map(allRows.map((row) => [getContributionRowId(row), row])).values());
       setExportTasksProgress({ processed: 0, total: uniqueRows.length });
 
       const taskRecords: Array<{
@@ -553,7 +714,7 @@ export default function CenixGitHubReport() {
 
       let processed = 0;
       for (const contributionRow of uniqueRows) {
-        let detailRows = rowDetails[makeRowKey(contributionRow)];
+        let detailRows = rowDetails[getContributionRowId(contributionRow)];
         const memberLabel = formatMemberLabel(contributionRow.member, contributionRow.memberDisplay);
 
         if (!detailRows) {
@@ -563,7 +724,7 @@ export default function CenixGitHubReport() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
                 repository: contributionRow.repository,
-                member: contributionRow.member,
+                member: resolveMemberIdentifier(contributionRow),
                 date: contributionRow.date
               })
             });
@@ -689,11 +850,12 @@ export default function CenixGitHubReport() {
       Map<string, { contributions: number; addedLines: number; removedLines: number; tasks: number }>
     >();
     const uniqueRowMap = new Map<string, ContributionRow>();
+    const detailCache = new Map<string, PullRequestDetailRow[]>();
 
     const updateGraphState = () => {
-      const arr = Array.from(memberMap.entries()).map(([member, metrics]) => ({
-        member,
-        memberDisplay: metrics.memberDisplay ?? member,
+      const arr = Array.from(memberMap.entries()).map(([memberKey, metrics]) => ({
+        member: memberKey,
+        memberDisplay: metrics.memberDisplay ?? memberKey,
         contributions: metrics.contributions,
         addedLines: metrics.addedLines,
         removedLines: metrics.removedLines,
@@ -701,9 +863,9 @@ export default function CenixGitHubReport() {
       }));
       setGraphData(arr);
 
-      const lines = Array.from(timelineMap.entries()).map(([member, datesMap]) => ({
-        member,
-        memberDisplay: memberMap.get(member)?.memberDisplay ?? member,
+      const lines = Array.from(timelineMap.entries()).map(([memberKey, datesMap]) => ({
+        member: memberKey,
+        memberDisplay: memberMap.get(memberKey)?.memberDisplay ?? memberKey,
         points: Array.from(datesMap.entries())
           .map(([date, stats]) => ({
             date,
@@ -718,23 +880,25 @@ export default function CenixGitHubReport() {
     };
 
     const accumulateRow = (r: ContributionRow) => {
-      uniqueRowMap.set(makeRowKey(r), r);
-      const existing = memberMap.get(r.member) ?? {
-        memberDisplay: formatMemberLabel(r.member, r.memberDisplay),
+      uniqueRowMap.set(getContributionRowId(r), r);
+      const memberKey = r.memberKey ?? buildMemberKey(r.member, r.memberDisplay);
+      const displayLabel = formatMemberLabel(r.member, r.memberDisplay);
+      const existing = memberMap.get(memberKey) ?? {
+        memberDisplay: displayLabel,
         contributions: 0,
         addedLines: 0,
         removedLines: 0,
         tasks: 0
       };
-      if (!existing.memberDisplay && r.memberDisplay) {
-        existing.memberDisplay = formatMemberLabel(r.member, r.memberDisplay);
+      if (!existing.memberDisplay && displayLabel) {
+        existing.memberDisplay = displayLabel;
       }
       existing.contributions += r.contributions;
       existing.addedLines += r.addedLines;
       existing.removedLines += r.removedLines;
-      memberMap.set(r.member, existing);
+      memberMap.set(memberKey, existing);
 
-      const timeline = timelineMap.get(r.member) ?? new Map();
+      const timeline = timelineMap.get(memberKey) ?? new Map();
       const dayStats = timeline.get(r.date) ?? {
         contributions: 0,
         addedLines: 0,
@@ -745,12 +909,50 @@ export default function CenixGitHubReport() {
       dayStats.addedLines += r.addedLines;
       dayStats.removedLines += r.removedLines;
       timeline.set(r.date, dayStats);
-      timelineMap.set(r.member, timeline);
+      timelineMap.set(memberKey, timeline);
+    };
+
+    const fetchDetailRowsForGraph = async (row: ContributionRow): Promise<PullRequestDetailRow[]> => {
+      const cacheKey = getContributionRowId(row);
+      if (detailCache.has(cacheKey)) {
+        return detailCache.get(cacheKey)!;
+      }
+
+      try {
+        const response = await fetch('/api/github/row-details', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repository: row.repository,
+            member: resolveMemberIdentifier(row),
+            date: row.date
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(await response.text());
+        }
+
+        const data = (await response.json()) as { rows: PullRequestDetailRow[] };
+        const rows = data.rows ?? [];
+        detailCache.set(cacheKey, rows);
+        return rows;
+      } catch (error) {
+        console.error('Failed to load pull request details for graph:', error);
+        detailCache.set(cacheKey, []);
+        return [];
+      }
     };
 
     const includeRows = (rows?: ContributionRow[]) => {
       if (!rows || rows.length === 0) return;
-      rows.forEach(accumulateRow);
+      const normalized = normalizeContributionRows(rows);
+      normalized.forEach((row) => {
+        if (!rowMatchesMemberFilter(row)) {
+          return;
+        }
+        accumulateRow(row);
+      });
       updateGraphState();
     };
 
@@ -816,42 +1018,35 @@ export default function CenixGitHubReport() {
 
         for (const contributionRow of uniqueRows) {
           try {
-            const countResponse = await fetch('/api/github/task-count', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                repository: contributionRow.repository,
-                member: contributionRow.member,
-                date: contributionRow.date
-              })
-            });
+            const detailRows = await fetchDetailRowsForGraph(contributionRow);
+            if (detailRows.length === 0) {
+              continue;
+            }
+            const uniqueDetails = Array.from(new Map(detailRows.map((detail) => [detail.id, detail])).values());
+            const taskCount = uniqueDetails.length;
 
-            if (countResponse.ok) {
-              const countData = (await countResponse.json()) as { count?: number };
-              const taskCount = typeof countData.count === 'number' ? countData.count : 0;
-
-              if (taskCount > 0) {
-                const metrics = memberMap.get(contributionRow.member);
-                if (metrics) {
-                  metrics.tasks += taskCount;
-                  memberMap.set(contributionRow.member, metrics);
-                }
-
-                const timeline = timelineMap.get(contributionRow.member) ?? new Map();
-                const dateKey = contributionRow.date;
-                const stats = timeline.get(dateKey) ?? {
-                  contributions: 0,
-                  addedLines: 0,
-                  removedLines: 0,
-                  tasks: 0
-                };
-                stats.tasks += taskCount;
-                timeline.set(dateKey, stats);
-                timelineMap.set(contributionRow.member, timeline);
+            if (taskCount > 0) {
+              const memberKey = contributionRow.memberKey ?? buildMemberKey(contributionRow.member, contributionRow.memberDisplay);
+              const metrics = memberMap.get(memberKey);
+              if (metrics) {
+                metrics.tasks += taskCount;
+                memberMap.set(memberKey, metrics);
               }
+
+              const timeline = timelineMap.get(memberKey) ?? new Map();
+              const dateKey = contributionRow.date;
+              const stats = timeline.get(dateKey) ?? {
+                contributions: 0,
+                addedLines: 0,
+                removedLines: 0,
+                tasks: 0
+              };
+              stats.tasks += taskCount;
+              timeline.set(dateKey, stats);
+              timelineMap.set(memberKey, timeline);
             }
           } catch (taskError) {
-            console.error('Failed to count tasks for', contributionRow.repository, taskError);
+            console.error('Failed to build task count for', contributionRow.repository, taskError);
           } finally {
             processedTasks += 1;
             setGraphBuildProgress({
@@ -872,7 +1067,7 @@ export default function CenixGitHubReport() {
       setGraphLoading(false);
       setGraphBuildProgress(null);
     }
-  }, [reportData, selectedRepos, showGraph, startDate, endDate]);
+  }, [reportData, selectedRepos, showGraph, startDate, endDate, rowMatchesMemberFilter]);
 
   // Export all pages by fetching all pages from server and concatenating rows
   async function exportAllPagesCsv() {
@@ -887,7 +1082,10 @@ export default function CenixGitHubReport() {
 
       // start with current page rows if available
       if (reportData.rows && reportData.rows.length > 0) {
-        allRows.push(...reportData.rows);
+        const initial = memberFilter === 'all'
+          ? reportData.rows
+          : reportData.rows.filter(rowMatchesMemberFilter);
+        allRows.push(...initial);
         setExportProgress({ fetched: allRows.length, total });
       }
 
@@ -914,12 +1112,19 @@ export default function CenixGitHubReport() {
 
         const json: ReportResponse = await resp.json();
         if (json.rows && json.rows.length > 0) {
-          allRows.push(...json.rows);
+          const normalized = normalizeContributionRows(json.rows);
+          const matching = memberFilter === 'all'
+            ? normalized
+            : normalized.filter(rowMatchesMemberFilter);
+          if (matching.length > 0) {
+            allRows.push(...matching);
+          }
         }
         setExportProgress({ fetched: allRows.length, total });
       }
 
-      downloadCsvFromRows(sortRows(allRows), `github-contributions-all-${startDate}-${endDate}.csv`);
+      const rowsToExport = memberFilter === 'all' ? allRows : allRows.filter(rowMatchesMemberFilter);
+      downloadCsvFromRows(sortRows(rowsToExport), `github-contributions-all-${startDate}-${endDate}.csv`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to export all pages');
     } finally {
@@ -929,7 +1134,7 @@ export default function CenixGitHubReport() {
   }
 
   const fetchRowDetailsForContribution = useCallback(async (row: ContributionRow) => {
-    const key = makeRowKey(row);
+    const key = getContributionRowId(row);
     if (rowDetails[key] || rowDetailsLoading[key]) {
       return;
     }
@@ -943,7 +1148,7 @@ export default function CenixGitHubReport() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           repository: row.repository,
-          member: row.member,
+          member: resolveMemberIdentifier(row),
           date: row.date
         })
       });
@@ -966,7 +1171,7 @@ export default function CenixGitHubReport() {
   }, [rowDetails, rowDetailsLoading]);
 
   const handleRowToggle = useCallback((row: ContributionRow) => {
-    const key = makeRowKey(row);
+    const key = getContributionRowId(row);
     setExpandedRowKey((prev) => (prev === key ? null : key));
     if (expandedRowKey !== key) {
       void fetchRowDetailsForContribution(row);
@@ -1025,7 +1230,7 @@ export default function CenixGitHubReport() {
 
   return (
     <div className="min-h-screen p-6">
-      <div className="max-w-6xl mx-auto">
+      <div className="mx-auto">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
           <div className="flex items-center gap-3">
@@ -1190,7 +1395,7 @@ export default function CenixGitHubReport() {
               <div className="flex flex-col gap-3 border-b border-gray-200 px-6 py-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">Contribution details</p>
-                  <p className="text-xs text-gray-500">Filter by member to focus results.</p>
+                <p className="text-xs text-gray-500">Filter by member to focus results.</p>
                 </div>
                 <label className="w-full text-sm font-medium text-gray-700 sm:w-64">
                   Member filter
@@ -1202,13 +1407,18 @@ export default function CenixGitHubReport() {
                   >
                     <option value="all">All members</option>
                     {tableMemberOptions.map((option) => (
-                      <option key={option.member} value={option.member}>
+                      <option key={option.key} value={option.key}>
                         {option.label}
                       </option>
                     ))}
                   </select>
                 </label>
               </div>
+              {memberFilter !== 'all' && (
+                <div className="border-b border-gray-200 px-6 py-2 text-sm text-gray-500">
+                  Showing {filteredTableRows.length} contribution{filteredTableRows.length === 1 ? '' : 's'} for {selectedMemberLabel}.
+                </div>
+              )}
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -1216,11 +1426,14 @@ export default function CenixGitHubReport() {
                     <th className="px-6 py-3 text-left">
                       <SortHeaderButton column="repository" label="Repository" />
                     </th>
+                    <th className="px-4 py-3 text-left text-[10px] font-medium uppercase tracking-wider text-gray-500 w-32">
+                      Row ID
+                    </th>
                     <th className="px-6 py-3 text-left">
                       <SortHeaderButton column="member" label="Member" />
                     </th>
-                    <th className="px-6 py-3 text-left">
-                      <SortHeaderButton column="date" label="Date" />
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Company
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Task</th>
                     <th className="px-6 py-3 text-right">
@@ -1232,16 +1445,20 @@ export default function CenixGitHubReport() {
                     <th className="px-6 py-3 text-right">
                       <SortHeaderButton column="removedLines" label="Optimized Lines" align="right" />
                     </th>
+                    <th className="px-6 py-3 text-left">
+                      <SortHeaderButton column="date" label="Date" />
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredTableRows.map((row, i) => {
-                    const rowKey = makeRowKey(row);
+                    const rowKey = getContributionRowId(row);
                     const isExpanded = expandedRowKey === rowKey;
                     const detailRows = rowDetails[rowKey] ?? [];
                     const detailLoading = rowDetailsLoading[rowKey];
                     const detailError = rowDetailsErrors[rowKey];
                     const memberName = formatMemberLabel(row.member, row.memberDisplay);
+                    const companyName = row.memberCompany?.trim() ?? '—';
 
                     return (
                       <React.Fragment key={rowKey}>
@@ -1255,8 +1472,9 @@ export default function CenixGitHubReport() {
                           className={`cursor-pointer ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2`}
                         >
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{row.repository}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-[10px] font-mono text-gray-600">{rowKey}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{memberName}</td>
-                          <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{row.date}</td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">{companyName}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">
                             {detailLoading
                               ? '…'
@@ -1269,10 +1487,11 @@ export default function CenixGitHubReport() {
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.contributions}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.addedLines}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.removedLines}</td>
+                          <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-600">{row.date}</td>
                         </tr>
                         {isExpanded && (
                           <tr>
-                            <td colSpan={7} className="bg-gray-50 px-6 py-4">
+                            <td colSpan={9} className="bg-gray-50 px-6 py-4">
                               <div className="space-y-4">
                                 {detailLoading && (
                                   <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -1342,7 +1561,7 @@ export default function CenixGitHubReport() {
                   })}
                   {filteredTableRows.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="px-6 py-4 text-center text-sm text-gray-600">
+                      <td colSpan={9} className="px-6 py-4 text-center text-sm text-gray-600">
                         No contributions found for this member.
                       </td>
                     </tr>
@@ -1353,7 +1572,7 @@ export default function CenixGitHubReport() {
             </div>
 
             {/* Pagination */}
-            {reportData.totalRows > reportData.perPage && (
+            {shouldShowPagination && (
               <div className="flex justify-center gap-2 mt-4">
                 <button
                   onClick={() => fetchReport(page - 1)}
