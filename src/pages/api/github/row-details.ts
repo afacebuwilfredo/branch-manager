@@ -95,6 +95,7 @@ type PullRequestDetailRow = {
   approvedBy: string | null;
   date: string;
   pullRequestUrl: string;
+  localBranchCount?: number;
 };
 
 type PullRequestFileCounts = {
@@ -151,7 +152,7 @@ const getLatestApproval = (node: PullRequestNode): string | null => {
   return approvals[0]!.author!.login ?? null;
 };
 
-const transformNodeToRow = (node: PullRequestNode, fileCounts: PullRequestFileCounts): PullRequestDetailRow => {
+const transformNodeToRow = (node: PullRequestNode, fileCounts: PullRequestFileCounts, localBranchCount?: number): PullRequestDetailRow => {
   const latestCommit = node.commits?.nodes?.find((commitNode) => Boolean(commitNode?.commit))?.commit;
   const commitHeadline = latestCommit?.messageHeadline?.trim();
   const date = node.mergedAt ?? node.updatedAt ?? node.createdAt;
@@ -167,8 +168,45 @@ const transformNodeToRow = (node: PullRequestNode, fileCounts: PullRequestFileCo
     commitName: commitHeadline && commitHeadline.length > 0 ? commitHeadline : node.title,
     approvedBy: getLatestApproval(node),
     date,
-    pullRequestUrl: node.url
+    pullRequestUrl: node.url,
+    localBranchCount
   };
+};
+
+const fetchLocalBranchCount = async (
+  token: string,
+  repoFullName: string
+): Promise<number> => {
+  const [owner, name] = repoFullName.split('/');
+  if (!owner || !name) {
+    return 0;
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.github.com/repos/${owner}/${name}/branches`,
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `bearer ${token}`,
+          Accept: 'application/vnd.github+json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      return 0;
+    }
+
+    const branches = (await response.json()) as Array<{ name?: string }> | { message?: string };
+    if (Array.isArray(branches)) {
+      return branches.length;
+    }
+    return 0;
+  } catch (error) {
+    console.error(`Failed to fetch branch count for ${repoFullName}:`, error);
+    return 0;
+  }
 };
 
 const fetchPullRequestFileCounts = async (
@@ -267,6 +305,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     let cursor: string | null = null;
     let page = 0;
     const maxPages = 5;
+    
+    // Fetch branch count only for afafilo/loveme
+    let branchCount: number | undefined = undefined;
+    if (repository.toLowerCase() === 'afafilo/loveme') {
+      branchCount = await fetchLocalBranchCount(token, repository);
+    }
 
     while (page < maxPages) {
       const data: SearchResponse = await performGraphQLRequest<SearchResponse>(token, ROW_DETAILS_QUERY, {
@@ -295,7 +339,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           );
         }
 
-        rows.push(transformNodeToRow(node, fileCounts));
+        rows.push(transformNodeToRow(node, fileCounts, branchCount));
       }
 
       const pageInfo: { hasNextPage: boolean; endCursor?: string | null } | undefined = data.search?.pageInfo;
