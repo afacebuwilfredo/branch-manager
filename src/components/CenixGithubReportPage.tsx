@@ -45,15 +45,21 @@ type PullRequestDetailRow = {
   approvedBy: string | null;
   date: string;
   pullRequestUrl: string;
+  localBranchCount?: number;
 };
 
 const isAfafiloRepo = (repository: string) => repository.trim().toLowerCase().startsWith("afafilo/");
 const filterDetailsForRepository = (repository: string, details?: PullRequestDetailRow[]) => {
   const safeDetails = details ?? [];
-  if (!isAfafiloRepo(repository)) {
+  // For afafilo/loveme, show all details without filtering by branch
+  if (repository.trim().toLowerCase() === "afafilo/loveme") {
     return safeDetails;
   }
-  return safeDetails.filter((detail) => detail.branchName?.trim().toLowerCase() === "staging");
+  // For other afafilo repos, filter to staging branch only
+  if (isAfafiloRepo(repository)) {
+    return safeDetails.filter((detail) => detail.branchName?.trim().toLowerCase() === "staging");
+  }
+  return safeDetails;
 };
 
 const detailNumberFormatter = new Intl.NumberFormat();
@@ -1131,6 +1137,7 @@ const memberLabelMap = useMemo(() => {
       });
 
       const uniqueRows = Array.from(uniqueRowMap.values());
+      
       if (uniqueRows.length > 0) {
         let processedTasks = 0;
         setGraphBuildProgress({
@@ -1147,6 +1154,7 @@ const memberLabelMap = useMemo(() => {
             }
             const uniqueDetails = Array.from(new Map(detailRows.map((detail) => [detail.id, detail])).values());
             const taskCount = uniqueDetails.length;
+            
             const fileTotals = uniqueDetails.reduce(
               (acc, detail) => {
                 acc.filesAdded += detail.filesAdded ?? 0;
@@ -1199,6 +1207,8 @@ const memberLabelMap = useMemo(() => {
             updateGraphState();
           }
         }
+        
+        updateGraphState();
       }
 
       setGraphBuildProgress(null);
@@ -1375,7 +1385,7 @@ const memberLabelMap = useMemo(() => {
     <div className="min-h-screen p-6">
       <div className="mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
+        <div className="flex items-center gap-4 mb-2">
           <div className="flex items-center gap-3">
             {user.avatarUrl && (
               <Image
@@ -1397,9 +1407,9 @@ const memberLabelMap = useMemo(() => {
         )}
 
         {/* Controls */}
-        <div className="space-y-6 mb-8">
+        <div className="space-y-4 mb-8">
           {/* Repository selection */}
-          <div className="bg-gray-50 p-4 rounded">
+          <div className="bg-gray-50 px-4 rounded">
             <div className="mb-3 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2">
