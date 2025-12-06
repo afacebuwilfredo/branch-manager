@@ -1307,6 +1307,18 @@ const memberLabelMap = useMemo(() => {
     return values;
   }, [reportData]);
 
+  const availableDates = useMemo(() => {
+    if (!reportData || !reportData.rows) return new Set<string>();
+    const dates = new Set<string>();
+    for (const r of reportData.rows) {
+      if (r.date) {
+        const dateStr = r.date.split(' ')[0]; // Extract just the date part (YYYY-MM-DD)
+        dates.add(dateStr);
+      }
+    }
+    return dates;
+  }, [reportData]);
+
   function openAnalyzeModal() {
     setAnalyzeStartDate(startDate);
     setAnalyzeEndDate(endDate);
@@ -1320,6 +1332,39 @@ const memberLabelMap = useMemo(() => {
     setAnalyzeLoading(true);
     setAnalyzeResult(null);
     try {
+      // Fetch ALL pages of report data
+      let allRows: any[] = [];
+      const perPage = reportData?.perPage ?? 50;
+      const totalRows = reportData?.totalRows ?? 0;
+      const totalPages = Math.ceil(totalRows / perPage);
+
+      console.log(`[analyze] Fetching ${totalPages} pages of report data...`);
+
+      for (let page = 1; page <= totalPages; page++) {
+        const resp = await fetch('/api/github/report', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repoFullNames: Array.from(selectedRepos),
+            startDate,
+            endDate,
+            page,
+            perPage
+          })
+        });
+
+        if (!resp.ok) {
+          throw new Error(`Failed to fetch report page ${page}`);
+        }
+
+        const data = await resp.json();
+        if (data.rows && data.rows.length > 0) {
+          allRows.push(...data.rows);
+        }
+      }
+
+      console.log(`[analyze] Fetched ${allRows.length} total rows`);
+
       const resp = await fetch('/api/analyze-work', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1327,7 +1372,7 @@ const memberLabelMap = useMemo(() => {
           member: analyzeMember, 
           startDate: analyzeStartDate, 
           endDate: analyzeEndDate,
-          reportRows: reportData?.rows ?? []
+          reportRows: allRows
         })
       });
       if (!resp.ok) {
@@ -1703,11 +1748,27 @@ const memberLabelMap = useMemo(() => {
                 </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium mb-1">Start Date</label>
-                  <input type="date" className="p-2 border rounded w-full" value={analyzeStartDate} onChange={(e) => setAnalyzeStartDate(e.target.value)} />
+                  <input 
+                    type="date" 
+                    className={`p-2 border rounded w-full ${analyzeStartDate && analyzeEndDate && analyzeStartDate <= analyzeEndDate ? 'bg-yellow-50 border-yellow-300' : ''}`} 
+                    value={analyzeStartDate} 
+                    onChange={(e) => setAnalyzeStartDate(e.target.value)}
+                    min={startDate}
+                    max={endDate}
+                  />
+                  <span className="text-xs text-gray-500 mt-1 block">Report: {startDate} to {endDate}</span>
                 </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium mb-1">End Date</label>
-                  <input type="date" className="p-2 border rounded w-full" value={analyzeEndDate} onChange={(e) => setAnalyzeEndDate(e.target.value)} />
+                  <input 
+                    type="date" 
+                    className={`p-2 border rounded w-full ${analyzeStartDate && analyzeEndDate && analyzeStartDate <= analyzeEndDate ? 'bg-yellow-50 border-yellow-300' : ''}`} 
+                    value={analyzeEndDate} 
+                    onChange={(e) => setAnalyzeEndDate(e.target.value)}
+                    min={startDate}
+                    max={endDate}
+                  />
+                  <span className="text-xs text-gray-500 mt-1 block">Report: {startDate} to {endDate}</span>
                 </div>
                 <div className="flex items-end gap-2">
                   <button onClick={() => { setAnalyzeModalOpen(false); }} className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">Cancel</button>

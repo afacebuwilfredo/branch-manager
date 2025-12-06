@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "simple-git": "^3.18.0",
     "@types/cookie": "^0.6.0",
     "cookie": "^1.0.2",
     "lru-cache": "^11.2.2",
