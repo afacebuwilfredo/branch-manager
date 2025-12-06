@@ -1893,7 +1893,7 @@ const memberLabelMap = useMemo(() => {
             }
 
             // Helper function to parse mixed markdown formatting
-            function parseFormattedText(text: string): any[] {
+            function parseFormattedText(text: string, isFullLine: boolean = false): any[] {
               const children: any[] = [];
               let currentPos = 0;
               
@@ -1916,22 +1916,26 @@ const memberLabelMap = useMemo(() => {
                 // Bold + Italic: **`text`**
                 if (matchedText.startsWith('**') && matchedText.includes('`')) {
                   const innerText = matchedText.slice(2, -2).replace(/`/g, '');
+                  const isStandalone = isFullLine && text.trim() === matchedText;
                   children.push(
                     new TextRun({
                       text: innerText,
                       bold: true,
                       italics: true,
-                      size: 22
+                      size: isStandalone ? 26 : 22,
+                      color: isStandalone ? '1E40AF' : undefined
                     })
                   );
                 }
                 // Bold: **text**
                 else if (matchedText.startsWith('**') && matchedText.endsWith('**')) {
+                  const isStandalone = isFullLine && text.trim() === matchedText;
                   children.push(
                     new TextRun({
                       text: matchedText.slice(2, -2),
                       bold: true,
-                      size: 22
+                      size: isStandalone ? 26 : 22,
+                      color: isStandalone ? '1E40AF' : undefined
                     })
                   );
                 }
@@ -1958,16 +1962,25 @@ const memberLabelMap = useMemo(() => {
                   })
                 );
               }
-              
+
               return children.length > 0 ? children : [new TextRun({ text: text, size: 22 })];
             }
 
-            // Format bullet points
-            if (trimmedLine.startsWith('*') || trimmedLine.startsWith('-')) {
+            // Check if line is just **text**
+            if (trimmedLine.startsWith('**') && trimmedLine.endsWith('**') && trimmedLine.length > 4) {
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(trimmedLine, true),
+                  spacing: { after: 100, before: 100 }
+                })
+              );
+            }
+            // Format bullet points (but not **bold** text)
+            else if ((trimmedLine.startsWith('*') && !trimmedLine.startsWith('**')) || trimmedLine.startsWith('-')) {
               const bulletText = trimmedLine.replace(/^[\*\-]\s*/, '').trim();
               paragraphs.push(
                 new Paragraph({
-                  children: parseFormattedText(bulletText),
+                  children: parseFormattedText(bulletText, false),
                   spacing: { after: 80, before: 40, line: 260 },
                   indent: { left: 720 },
                   bullet: {
@@ -1994,7 +2007,7 @@ const memberLabelMap = useMemo(() => {
             else if (trimmedLine.endsWith(':')) {
               paragraphs.push(
                 new Paragraph({
-                  children: parseFormattedText(trimmedLine),
+                  children: parseFormattedText(trimmedLine, false),
                   spacing: { after: 80, before: 120, line: 260 }
                 })
               );
@@ -2003,7 +2016,7 @@ const memberLabelMap = useMemo(() => {
             else if (trimmedLine.length > 0) {
               paragraphs.push(
                 new Paragraph({
-                  children: parseFormattedText(trimmedLine),
+                  children: parseFormattedText(trimmedLine, false),
                   spacing: { after: 100, line: 280 },
                   alignment: AlignmentType.JUSTIFIED
                 })
@@ -2561,7 +2574,7 @@ const memberLabelMap = useMemo(() => {
             }
 
             // Helper function to parse mixed markdown formatting
-            function parseFormattedText(text: string): any[] {
+            function parseFormattedText(text: string, isFullLine: boolean = false): any[] {
               const children: any[] = [];
               let currentPos = 0;
               
@@ -2584,22 +2597,26 @@ const memberLabelMap = useMemo(() => {
                 // Bold + Italic: **`text`**
                 if (matchedText.startsWith('**') && matchedText.includes('`')) {
                   const innerText = matchedText.slice(2, -2).replace(/`/g, '');
+                  const isStandalone = isFullLine && text.trim() === matchedText;
                   children.push(
                     new TextRun({
                       text: innerText,
                       bold: true,
                       italics: true,
-                      size: 22
+                      size: isStandalone ? 26 : 22,
+                      color: isStandalone ? '1E40AF' : undefined
                     })
                   );
                 }
                 // Bold: **text**
                 else if (matchedText.startsWith('**') && matchedText.endsWith('**')) {
+                  const isStandalone = isFullLine && text.trim() === matchedText;
                   children.push(
                     new TextRun({
                       text: matchedText.slice(2, -2),
                       bold: true,
-                      size: 22
+                      size: isStandalone ? 26 : 22,
+                      color: isStandalone ? '1E40AF' : undefined
                     })
                   );
                 }
@@ -2630,12 +2647,21 @@ const memberLabelMap = useMemo(() => {
               return children.length > 0 ? children : [new TextRun({ text: text, size: 22 })];
             }
 
-            // Format bullet points
-            if (trimmedLine.startsWith('*') || trimmedLine.startsWith('-')) {
+            // Check if line is just **text**
+            if (trimmedLine.startsWith('**') && trimmedLine.endsWith('**') && trimmedLine.length > 4) {
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(trimmedLine, true),
+                  spacing: { after: 100, before: 100 }
+                })
+              );
+            }
+            // Format bullet points (but not **bold** text)
+            else if ((trimmedLine.startsWith('*') && !trimmedLine.startsWith('**')) || trimmedLine.startsWith('-')) {
               const bulletText = trimmedLine.replace(/^[\*\-]\s*/, '').trim();
               paragraphs.push(
                 new Paragraph({
-                  children: parseFormattedText(bulletText),
+                  children: parseFormattedText(bulletText, false),
                   spacing: { after: 80, before: 40, line: 260 },
                   indent: { left: 720 },
                   bullet: {
@@ -2648,7 +2674,7 @@ const memberLabelMap = useMemo(() => {
             else if (trimmedLine.endsWith(':')) {
               paragraphs.push(
                 new Paragraph({
-                  children: parseFormattedText(trimmedLine),
+                  children: parseFormattedText(trimmedLine, false),
                   spacing: { after: 80, before: 120, line: 260 }
                 })
               );
@@ -2657,7 +2683,7 @@ const memberLabelMap = useMemo(() => {
             else if (trimmedLine.length > 0) {
               paragraphs.push(
                 new Paragraph({
-                  children: parseFormattedText(trimmedLine),
+                  children: parseFormattedText(trimmedLine, false),
                   spacing: { after: 100, line: 280 },
                   alignment: AlignmentType.JUSTIFIED
                 })
@@ -3135,27 +3161,19 @@ const memberLabelMap = useMemo(() => {
                     {/* Download buttons */}
                     <div className="pt-4 border-t">
                       <div className="flex gap-2 flex-wrap items-center">
-                       
                         <button 
-                          onClick={downloadFullReport}
-                          className="px-3 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700"
-                        >
-                          Full Report
-                        </button>
-                        <button 
-                          onClick={() => setShowMoreOptions(!showMoreOptions)}
-                          className="px-3 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 flex items-center gap-1"
-                        >
-                          {showMoreOptions ? '▼' : '▶'} More Options
-                        </button>
-                      </div>
-                      {showMoreOptions && (
-                        <div className="flex gap-2 flex-wrap mt-2">
-                           <button 
                             onClick={downloadSummaryReport}
                             className="px-3 py-2 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
                           >
                             Summary Report
+                          </button>
+                      {showMoreOptions && (
+                        <>
+                          <button 
+                            onClick={downloadFullReport}
+                            className="px-3 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700"
+                          >
+                            Full Report
                           </button>
                           <button 
                             onClick={downloadAnalysis}
@@ -3169,8 +3187,16 @@ const memberLabelMap = useMemo(() => {
                           >
                             Download Report
                           </button>
-                        </div>
+                        </>
                       )}
+                      <button 
+                          onClick={() => setShowMoreOptions(!showMoreOptions)}
+                          className="px-3 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 flex items-center gap-1"
+                        >
+                          {showMoreOptions ? 'Hide Options' : 'More Options'} 
+                        </button>
+                        
+                      </div>
                     </div>
                   </>
                 ) : analyzeLoading ? (
