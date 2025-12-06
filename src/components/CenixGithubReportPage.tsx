@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Image from 'next/image';
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, Table, TableCell, TableRow, WidthType, UnderlineType } from 'docx';
 
 const CHART_COLORS = [
   '#4f46e5', '#16a34a', '#f97316', '#0ea5e9', '#ec4899',
@@ -1483,113 +1483,522 @@ const memberLabelMap = useMemo(() => {
     // Title
     paragraphs.push(
       new Paragraph({
-        text: 'WORK SUMMARY REPORT',
-        heading: HeadingLevel.HEADING_1,
+        children: [
+          new TextRun({
+            text: 'WORK SUMMARY REPORT',
+            bold: true,
+            size: 32,
+            color: '1E40AF'
+          })
+        ],
         alignment: AlignmentType.CENTER,
-        spacing: { after: 200 }
+        spacing: { after: 0 }
       })
     );
 
-    // Header Info
+    // Decorative line
     paragraphs.push(
       new Paragraph({
-        text: `Team Member: ${analyzeResult.member}`,
-        spacing: { after: 100 }
-      })
-    );
-    paragraphs.push(
-      new Paragraph({
-        text: `Period: ${analyzeResult.startDate} to ${analyzeResult.endDate}`,
-        spacing: { after: 100 }
-      })
-    );
-    paragraphs.push(
-      new Paragraph({
-        text: `Report Date: ${new Date().toLocaleDateString()}`,
-        spacing: { after: 200 }
+        children: [new TextRun('')],
+        border: {
+          bottom: {
+            color: '2563EB',
+            space: 0,
+            style: BorderStyle.DOUBLE,
+            size: 12
+          }
+        },
+        spacing: { after: 300 }
       })
     );
 
-    // Key Metrics Section
+    // Member Name
     paragraphs.push(
       new Paragraph({
-        text: 'KEY METRICS',
-        heading: HeadingLevel.HEADING_2,
-        spacing: { after: 100 }
+        children: [
+          new TextRun({
+            text: `Team Member: ${analyzeResult.member}`,
+            bold: true,
+            size: 24,
+            color: '1E40AF'
+          })
+        ],
+        spacing: { after: 80, before: 100 }
+      })
+    );
+    
+    // Report Period
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Report Period: ${analyzeResult.startDate} → ${analyzeResult.endDate}`,
+            size: 22
+          })
+        ],
+        spacing: { after: 80 }
+      })
+    );
+    
+    // Generated Date
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+            size: 22,
+            italics: true,
+            color: '64748B'
+          })
+        ],
+        spacing: { after: 300 }
       })
     );
 
+    // Key Metrics Header
     paragraphs.push(
       new Paragraph({
-        text: `Total Pull Requests: ${totalPRs}`,
-        spacing: { after: 50 }
+        children: [
+          new TextRun({
+            text: 'KEY PERFORMANCE METRICS',
+            bold: true,
+            size: 26,
+            color: '1E40AF'
+          })
+        ],
+        spacing: { after: 200, before: 100 }
       })
     );
-    paragraphs.push(
-      new Paragraph({
-        text: `Days Active: ${daysActive.size}`,
-        spacing: { after: 50 }
+
+    // Metrics Table
+    const metricsRows = [
+      new TableRow({
+        height: { value: 600, rule: 'atLeast' },
+        children: [
+          new TableCell({
+            width: { size: 50, type: WidthType.PERCENTAGE },
+            shading: { fill: '1E40AF' },
+            margins: { top: 150, bottom: 150, left: 150, right: 150 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Metric',
+                    bold: true,
+                    color: 'FFFFFF',
+                    size: 28
+                  })
+                ],
+                alignment: AlignmentType.CENTER
+              })
+            ]
+          }),
+          new TableCell({
+            width: { size: 50, type: WidthType.PERCENTAGE },
+            shading: { fill: '1E40AF' },
+            margins: { top: 150, bottom: 150, left: 150, right: 150 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Value',
+                    bold: true,
+                    color: 'FFFFFF',
+                    size: 28
+                  })
+                ],
+                alignment: AlignmentType.CENTER
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            shading: { fill: 'F0F9FF' },
+            children: [new Paragraph('Total Pull Requests')]
+          }),
+          new TableCell({
+            shading: { fill: 'F0F9FF' },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: totalPRs.toString(),
+                    bold: true,
+                    size: 24,
+                    color: '0EA5E9'
+                  })
+                ]
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            children: [new Paragraph('Days Active')]
+          }),
+          new TableCell({
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: daysActive.size.toString(),
+                    bold: true,
+                    size: 24,
+                    color: '0EA5E9'
+                  })
+                ]
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            shading: { fill: 'F0F9FF' },
+            children: [new Paragraph('Files Added')]
+          }),
+          new TableCell({
+            shading: { fill: 'F0F9FF' },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: totalFilesAdded.toString(),
+                    bold: true,
+                    size: 24,
+                    color: '22C55E'
+                  })
+                ]
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            children: [new Paragraph('Files Deleted')]
+          }),
+          new TableCell({
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: totalFilesDeleted.toString(),
+                    bold: true,
+                    size: 24,
+                    color: 'EF4444'
+                  })
+                ]
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            shading: { fill: 'F0F9FF' },
+            children: [new Paragraph('Files Modified')]
+          }),
+          new TableCell({
+            shading: { fill: 'F0F9FF' },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: totalFilesModified.toString(),
+                    bold: true,
+                    size: 24,
+                    color: 'F59E0B'
+                  })
+                ]
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        children: [
+          new TableCell({
+            shading: { fill: '1E40AF' },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Total Files Changed',
+                    bold: true,
+                    color: 'FFFFFF'
+                  })
+                ]
+              })
+            ]
+          }),
+          new TableCell({
+            shading: { fill: '1E40AF' },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: (totalFilesAdded + totalFilesDeleted + totalFilesModified).toString(),
+                    bold: true,
+                    size: 26,
+                    color: 'FFFFFF'
+                  })
+                ]
+              })
+            ]
+          })
+        ]
       })
+    ];
+
+    paragraphs.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: metricsRows
+      }) as unknown as Paragraph
     );
+
+    // Spacing
     paragraphs.push(
       new Paragraph({
-        text: `Files Added: ${totalFilesAdded}`,
-        spacing: { after: 50 }
-      })
-    );
-    paragraphs.push(
-      new Paragraph({
-        text: `Files Deleted: ${totalFilesDeleted}`,
-        spacing: { after: 50 }
-      })
-    );
-    paragraphs.push(
-      new Paragraph({
-        text: `Files Modified: ${totalFilesModified}`,
-        spacing: { after: 50 }
-      })
-    );
-    paragraphs.push(
-      new Paragraph({
-        text: `Total Files Changed: ${totalFilesAdded + totalFilesDeleted + totalFilesModified}`,
-        spacing: { after: 200 }
+        children: [new TextRun('')],
+        spacing: { after: 300, before: 200 }
       })
     );
 
     // Work Summary Section
     paragraphs.push(
       new Paragraph({
-        text: 'WORK SUMMARY',
-        heading: HeadingLevel.HEADING_2,
-        spacing: { after: 100 }
+        children: [
+          new TextRun({
+            text: `${analyzeResult.member} WORK SUMMARY`,
+            bold: true,
+            size: 26,
+            color: '1E40AF'
+          })
+        ],
+        spacing: { after: 200, before: 100 }
       })
     );
 
     if (analyzeResult.taskAnalyses && analyzeResult.taskAnalyses.length > 0) {
-      analyzeResult.taskAnalyses.forEach((task: any) => {
+      analyzeResult.taskAnalyses.forEach((task: any, dayIndex: number) => {
+        // Add date header
+        paragraphs.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: task.date,
+                bold: true,
+                size: 24,
+                color: '2563EB'
+              })
+            ],
+            spacing: { before: 150, after: 100 }
+          })
+        );
+
         if (task.analysis && task.analysis.text) {
-          paragraphs.push(
-            new Paragraph({
-              text: task.analysis.text,
-              spacing: { after: 150 }
-            })
-          );
+          // Parse and format the analysis text
+          const analysisText = task.analysis.text;
+          const lines = analysisText.split('\n').filter((line: string) => line.trim());
+          
+          lines.forEach((line: string) => {
+            const trimmedLine = line.trim();
+            
+            // Skip markdown headers and code blocks
+            if (trimmedLine.startsWith('#') || trimmedLine.startsWith('```')) {
+              return;
+            }
+
+            // Helper function to parse mixed markdown formatting
+            function parseFormattedText(text: string): any[] {
+              const children: any[] = [];
+              let currentPos = 0;
+              
+              // Regex to find **`bold italic`**, **bold**, `italic`, and plain text
+              const regex = /(\*\*`[^`]+`\*\*|\*\*[^*]+\*\*|`[^`]+`)/g;
+              let match;
+              
+              while ((match = regex.exec(text)) !== null) {
+                // Add plain text before this match
+                if (match.index > currentPos) {
+                  children.push(
+                    new TextRun({
+                      text: text.substring(currentPos, match.index),
+                      size: 22
+                    })
+                  );
+                }
+                
+                const matchedText = match[0];
+                // Bold + Italic: **`text`**
+                if (matchedText.startsWith('**') && matchedText.includes('`')) {
+                  const innerText = matchedText.slice(2, -2).replace(/`/g, '');
+                  children.push(
+                    new TextRun({
+                      text: innerText,
+                      bold: true,
+                      italics: true,
+                      size: 22
+                    })
+                  );
+                }
+                // Bold: **text**
+                else if (matchedText.startsWith('**') && matchedText.endsWith('**')) {
+                  children.push(
+                    new TextRun({
+                      text: matchedText.slice(2, -2),
+                      bold: true,
+                      size: 22
+                    })
+                  );
+                }
+                // Italic: `text`
+                else if (matchedText.startsWith('`') && matchedText.endsWith('`')) {
+                  children.push(
+                    new TextRun({
+                      text: matchedText.slice(1, -1),
+                      italics: true,
+                      size: 22
+                    })
+                  );
+                }
+                
+                currentPos = match.index + matchedText.length;
+              }
+              
+              // Add remaining plain text
+              if (currentPos < text.length) {
+                children.push(
+                  new TextRun({
+                    text: text.substring(currentPos),
+                    size: 22
+                  })
+                );
+              }
+              
+              return children.length > 0 ? children : [new TextRun({ text: text, size: 22 })];
+            }
+
+            // Format bullet points
+            if (trimmedLine.startsWith('*') || trimmedLine.startsWith('-')) {
+              const bulletText = trimmedLine.replace(/^[\*\-]\s*/, '').trim();
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(bulletText),
+                  spacing: { after: 80, before: 40, line: 260 },
+                  indent: { left: 720 },
+                  bullet: {
+                    level: 0
+                  }
+                })
+              );
+            }
+            // Format numbers with periods (numbered lists)
+            else if (/^\d+\.\s/.test(trimmedLine)) {
+              const numberText = trimmedLine.replace(/^\d+\.\s*/, '').trim();
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(numberText),
+                  spacing: { after: 80, before: 40, line: 260 },
+                  indent: { left: 720 },
+                  bullet: {
+                    level: 0
+                  }
+                })
+              );
+            }
+            // Bold lines with colons (section headers)
+            else if (trimmedLine.endsWith(':')) {
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(trimmedLine),
+                  spacing: { after: 80, before: 120, line: 260 }
+                })
+              );
+            }
+            // Regular paragraphs
+            else if (trimmedLine.length > 0) {
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(trimmedLine),
+                  spacing: { after: 100, line: 280 },
+                  alignment: AlignmentType.JUSTIFIED
+                })
+              );
+            }
+          });
         }
+
+        // Add spacing between days
+        paragraphs.push(
+          new Paragraph({
+            children: [new TextRun('')],
+            spacing: { after: 200 }
+          })
+        );
       });
     }
 
-    // Footer
+    // Footer spacing
     paragraphs.push(
       new Paragraph({
-        text: 'Generated for management and client review',
-        spacing: { before: 200 },
+        children: [new TextRun('')],
+        spacing: { before: 400 }
+      })
+    );
+
+    // Footer line
+    paragraphs.push(
+      new Paragraph({
+        children: [new TextRun('─'.repeat(60))],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 150 }
+      })
+    );
+
+    // Footer text
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: 'This report is for management and client review.',
+            italics: true,
+            size: 20,
+            color: '64748B'
+          })
+        ],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 50 }
+      })
+    );
+
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Confidential - ${new Date().getFullYear()}`,
+            bold: true,
+            size: 20,
+            color: '64748B'
+          })
+        ],
         alignment: AlignmentType.CENTER
       })
     );
 
     const doc = new Document({
       sections: [{
-        children: paragraphs
+        children: [...paragraphs] as any
       }]
     });
 
