@@ -389,6 +389,75 @@ export default function CenixGitHubReport() {
     }
   }
 
+  // Fetch all members from all pages
+  useEffect(() => {
+    const fetchAllMembers = async () => {
+      if (!reportData) {
+        setAllPageMembers([]);
+        setAllPageRows([]);
+        return;
+      }
+
+      const seen = new Set<string>();
+      const members: string[] = [];
+      const allRows: ContributionRow[] = [];
+      const perPage = reportData.perPage || 50;
+      const totalRows = reportData.totalRows || 0;
+      const totalPages = Math.ceil(totalRows / perPage);
+
+      // First add rows and members from current page
+      if (reportData.rows) {
+        allRows.push(...reportData.rows);
+        for (const r of reportData.rows) {
+          const id = (r.memberLogin || r.member || r.memberDisplay || '').trim();
+          if (id && !seen.has(id)) {
+            seen.add(id);
+            members.push(id);
+          }
+        }
+      }
+
+      // Fetch remaining pages
+      for (let p = 1; p <= totalPages; p++) {
+        if (p === page) continue; // Skip current page already processed
+
+        try {
+          const res = await fetch('/api/github/report', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              repoFullNames: Array.from(selectedRepos),
+              startDate,
+              endDate,
+              page: p,
+              perPage
+            })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const normalized = normalizeContributionRows(data.rows);
+            allRows.push(...normalized);
+            for (const r of normalized) {
+              const id = (r.memberLogin || r.member || r.memberDisplay || '').trim();
+              if (id && !seen.has(id)) {
+                seen.add(id);
+                members.push(id);
+              }
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to fetch page ${p} for member list:`, err);
+        }
+      }
+
+      setAllPageMembers(members);
+      setAllPageRows(allRows);
+    };
+
+    fetchAllMembers();
+  }, [reportData, selectedRepos, startDate, endDate, page]);
+
   // Handle CSV export
   const [exporting, setExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ fetched: number; total?: number } | null>(null);
@@ -409,6 +478,8 @@ const [graphData, setGraphData] = useState<GraphAggregateRow[] | null>(null);
   const [analyzeResult, setAnalyzeResult] = useState<any | null>(null);
   const [visibleMembers, setVisibleMembers] = useState<Set<string>>(new Set());
   const [graphCompanyFilter, setGraphCompanyFilter] = useState<string>('all');
+  const [allPageMembers, setAllPageMembers] = useState<string[]>([]);
+  const [allPageRows, setAllPageRows] = useState<ContributionRow[]>([]);
 
   const [graphBuildProgress, setGraphBuildProgress] = useState<{ label: string; processed: number; total: number } | null>(null);
   const [exportingTasks, setExportingTasks] = useState(false);
@@ -485,22 +556,31 @@ const metricOptions: GraphMetric[] = [
   );
 
   const tableMemberOptions = useMemo(() => {
-    if (!reportData?.rows) return [];
+    if (!reportData?.rows || allPageMembers.length === 0) return [];
+    
+    // Create a map using allPageMembers (which includes all pages)
     const memberMap = new Map<string, string>();
+    
+    // First pass: add all members from all pages
+    allPageMembers.forEach((memberId) => {
+      if (!memberMap.has(memberId)) {
+        memberMap.set(memberId, memberId);
+      }
+    });
+    
+    // Second pass: if we have current page data, use display labels if available
     reportData.rows.forEach((row) => {
-      const key =
-        resolveMemberIdentifier(row) ||
-        row.memberKey ||
-        buildMemberKey(row.member, row.memberDisplay);
-      if (!memberMap.has(key)) {
-        const label = formatMemberLabel(row.member, row.memberDisplay) || "Unknown member";
+      const key = resolveMemberIdentifier(row) || row.memberKey || buildMemberKey(row.member, row.memberDisplay);
+      if (memberMap.has(key)) {
+        const label = formatMemberLabel(row.member, row.memberDisplay) || key;
         memberMap.set(key, label);
       }
     });
+    
     return Array.from(memberMap.entries())
       .map(([key, label]) => ({ key, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [reportData]);
+  }, [reportData, allPageMembers]);
 
   const selectedMemberLabel = useMemo(() => {
     if (memberFilter === 'all') return null;
@@ -510,8 +590,10 @@ const metricOptions: GraphMetric[] = [
 
   const filteredTableRows = useMemo(() => {
     if (memberFilter === "all") return sortedRows;
-    return sortedRows.filter((row) => rowMatchesMemberFilter(row));
-  }, [sortedRows, memberFilter, rowMatchesMemberFilter]);
+    // Use allPageRows for filtering so we get all results from all pages
+    const rowsToFilter = allPageRows.length > 0 ? allPageRows : sortedRows;
+    return rowsToFilter.filter((row) => rowMatchesMemberFilter(row));
+  }, [sortedRows, memberFilter, rowMatchesMemberFilter, allPageRows]);
 
   useEffect(() => {
     if (memberFilter === 'all') return;
@@ -1295,18 +1377,8 @@ const memberLabelMap = useMemo(() => {
   }
 
   const availableMembers = useMemo(() => {
-    if (!reportData || !reportData.rows) return [] as string[];
-    const seen = new Set<string>();
-    const values: string[] = [];
-    for (const r of reportData.rows) {
-      const id = (r.memberLogin || r.member || r.memberDisplay || '').trim();
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        values.push(id);
-      }
-    }
-    return values;
-  }, [reportData]);
+    return allPageMembers;
+  }, [allPageMembers]);
 
   const availableDates = useMemo(() => {
     if (!reportData || !reportData.rows) return new Set<string>();
@@ -2318,7 +2390,7 @@ const memberLabelMap = useMemo(() => {
                     min={startDate}
                     max={endDate}
                   />
-                  <span className="text-xs text-gray-500 mt-1 block">Report: {startDate} to {endDate}</span>
+                  {/* <span className="text-xs text-gray-500 mt-1 block">Report: {startDate} to {endDate}</span> */}
                 </div>
                 <div className="flex-1">
                   <label className="block text-sm font-medium mb-1">End Date</label>
@@ -2330,7 +2402,7 @@ const memberLabelMap = useMemo(() => {
                     min={startDate}
                     max={endDate}
                   />
-                  <span className="text-xs text-gray-500 mt-1 block">Report: {startDate} to {endDate}</span>
+                  {/* <span className="text-xs text-gray-500 mt-1 block">Report: {startDate} to {endDate}</span> */}
                 </div>
                 <div className="flex items-end gap-2">
                   <button onClick={() => { setAnalyzeModalOpen(false); }} className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">Cancel</button>
