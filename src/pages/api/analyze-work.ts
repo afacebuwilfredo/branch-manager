@@ -47,13 +47,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(400).json({ error: 'Missing required parameter: reportRows' });
     }
 
-    // Filter rows for this member
+    // Parse dates for filtering
+    const start = startDate ? new Date(startDate) : null;
+    const end = endDate ? new Date(endDate) : null;
+    if (end) end.setHours(23, 59, 59, 999); // Include entire end date
+
+    console.log('[analyze-work] Date range:', { start, end });
+
+    // Filter rows for this member and date range
     const memberRows = reportRows.filter((row: any) => {
+      // Filter by member
       const rowMember = (row.memberLogin || row.member || row.memberDisplay || '').toLowerCase();
-      return rowMember.includes(member.toLowerCase());
+      if (!rowMember.includes(member.toLowerCase())) {
+        return false;
+      }
+
+      // Filter by date range
+      if (row.date) {
+        const rowDate = new Date(row.date);
+        if (start && rowDate < start) {
+          console.log(`[analyze-work] Skipping ${row.date} - before start date ${startDate}`);
+          return false;
+        }
+        if (end && rowDate > end) {
+          console.log(`[analyze-work] Skipping ${row.date} - after end date ${endDate}`);
+          return false;
+        }
+      }
+
+      return true;
     });
 
-    console.log('[analyze-work] Filtered to', memberRows.length, 'rows for member:', member);
+    console.log('[analyze-work] Filtered to', memberRows.length, 'rows for member:', member, 'in date range:', startDate, 'to', endDate);
 
     if (memberRows.length === 0) {
       return res.status(200).json({
