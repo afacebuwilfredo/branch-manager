@@ -1649,9 +1649,9 @@ const memberLabelMap = useMemo(() => {
         height: { value: 600, rule: 'atLeast' },
         children: [
           new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
-            margins: { top: 150, bottom: 150, left: 150, right: 150 },
+            margins: { top: 150, bottom: 150, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1667,9 +1667,9 @@ const memberLabelMap = useMemo(() => {
             ]
           }),
           new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
-            margins: { top: 150, bottom: 150, left: 150, right: 150 },
+            margins: { top: 150, bottom: 150, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1680,20 +1680,25 @@ const memberLabelMap = useMemo(() => {
                     size: 28
                   })
                 ],
-                alignment: AlignmentType.CENTER
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            children: [new Paragraph('Total Pull Requests')]
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Total Pull Requests', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1703,18 +1708,24 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: '0EA5E9'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
-            children: [new Paragraph('Days Active')]
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Days Active', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1724,20 +1735,26 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: '0EA5E9'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            children: [new Paragraph('Files Added')]
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Added', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1747,18 +1764,24 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: '22C55E'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
-            children: [new Paragraph('Files Deleted')]
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Deleted', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1768,20 +1791,26 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: 'EF4444'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            children: [new Paragraph('Files Modified')]
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Modified', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1791,16 +1820,20 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: 'F59E0B'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1809,12 +1842,15 @@ const memberLabelMap = useMemo(() => {
                     bold: true,
                     color: 'FFFFFF'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1824,7 +1860,8 @@ const memberLabelMap = useMemo(() => {
                     size: 26,
                     color: 'FFFFFF'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
@@ -2223,9 +2260,9 @@ const memberLabelMap = useMemo(() => {
         height: { value: 600, rule: 'atLeast' },
         children: [
           new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
-            margins: { top: 150, bottom: 150, left: 150, right: 150 },
+            margins: { top: 150, bottom: 150, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -2241,9 +2278,9 @@ const memberLabelMap = useMemo(() => {
             ]
           }),
           new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
-            margins: { top: 150, bottom: 150, left: 150, right: 150 },
+            margins: { top: 150, bottom: 150, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -2265,12 +2302,12 @@ const memberLabelMap = useMemo(() => {
         children: [
           new TableCell({
             shading: { fill: 'F0F9FF' },
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
-            children: [new Paragraph({ text: 'Total Pull Requests', alignment: AlignmentType.CENTER })]
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Total Pull Requests', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
             shading: { fill: 'F0F9FF' },
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -2281,7 +2318,7 @@ const memberLabelMap = useMemo(() => {
                     color: '0EA5E9'
                   })
                 ],
-                alignment: AlignmentType.CENTER
+                alignment: AlignmentType.LEFT
               })
             ]
           })
@@ -2291,11 +2328,13 @@ const memberLabelMap = useMemo(() => {
         height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
-            children: [new Paragraph({ text: 'Days Active', alignment: AlignmentType.CENTER })]
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Days Active', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -2306,7 +2345,7 @@ const memberLabelMap = useMemo(() => {
                     color: '0EA5E9'
                   })
                 ],
-                alignment: AlignmentType.CENTER
+                alignment: AlignmentType.LEFT
               })
             ]
           })
@@ -2316,13 +2355,15 @@ const memberLabelMap = useMemo(() => {
         height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
-            children: [new Paragraph({ text: 'Files Added', alignment: AlignmentType.CENTER })]
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Added', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -2333,7 +2374,7 @@ const memberLabelMap = useMemo(() => {
                     color: '22C55E'
                   })
                 ],
-                alignment: AlignmentType.CENTER
+                alignment: AlignmentType.LEFT
               })
             ]
           })
@@ -2343,11 +2384,13 @@ const memberLabelMap = useMemo(() => {
         height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
-            children: [new Paragraph({ text: 'Files Deleted', alignment: AlignmentType.CENTER })]
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Deleted', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -2358,7 +2401,7 @@ const memberLabelMap = useMemo(() => {
                     color: 'EF4444'
                   })
                 ],
-                alignment: AlignmentType.CENTER
+                alignment: AlignmentType.LEFT
               })
             ]
           })
@@ -2368,13 +2411,15 @@ const memberLabelMap = useMemo(() => {
         height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
-            children: [new Paragraph({ text: 'Files Modified', alignment: AlignmentType.CENTER })]
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Modified', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -2385,7 +2430,7 @@ const memberLabelMap = useMemo(() => {
                     color: 'F59E0B'
                   })
                 ],
-                alignment: AlignmentType.CENTER
+                alignment: AlignmentType.LEFT
               })
             ]
           })
@@ -2395,8 +2440,9 @@ const memberLabelMap = useMemo(() => {
         height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -2406,13 +2452,14 @@ const memberLabelMap = useMemo(() => {
                     color: 'FFFFFF'
                   })
                 ],
-                alignment: AlignmentType.CENTER
+                alignment: AlignmentType.LEFT
               })
             ]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
-            margins: { top: 100, bottom: 100, left: 150, right: 150 },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -2423,7 +2470,7 @@ const memberLabelMap = useMemo(() => {
                     color: 'FFFFFF'
                   })
                 ],
-                alignment: AlignmentType.CENTER
+                alignment: AlignmentType.LEFT
               })
             ]
           })
