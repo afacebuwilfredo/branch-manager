@@ -480,6 +480,7 @@ const [graphData, setGraphData] = useState<GraphAggregateRow[] | null>(null);
   const [graphCompanyFilter, setGraphCompanyFilter] = useState<string>('all');
   const [allPageMembers, setAllPageMembers] = useState<string[]>([]);
   const [allPageRows, setAllPageRows] = useState<ContributionRow[]>([]);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   const [graphBuildProgress, setGraphBuildProgress] = useState<{ label: string; processed: number; total: number } | null>(null);
   const [exportingTasks, setExportingTasks] = useState(false);
@@ -1648,9 +1649,9 @@ const memberLabelMap = useMemo(() => {
         height: { value: 600, rule: 'atLeast' },
         children: [
           new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
-            margins: { top: 150, bottom: 150, left: 150, right: 150 },
+            margins: { top: 150, bottom: 150, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1666,9 +1667,9 @@ const memberLabelMap = useMemo(() => {
             ]
           }),
           new TableCell({
-            width: { size: 50, type: WidthType.PERCENTAGE },
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
-            margins: { top: 150, bottom: 150, left: 150, right: 150 },
+            margins: { top: 150, bottom: 150, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1679,20 +1680,25 @@ const memberLabelMap = useMemo(() => {
                     size: 28
                   })
                 ],
-                alignment: AlignmentType.CENTER
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            children: [new Paragraph('Total Pull Requests')]
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Total Pull Requests', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1702,18 +1708,24 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: '0EA5E9'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
-            children: [new Paragraph('Days Active')]
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Days Active', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1723,20 +1735,26 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: '0EA5E9'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            children: [new Paragraph('Files Added')]
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Added', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1746,18 +1764,24 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: '22C55E'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
-            children: [new Paragraph('Files Deleted')]
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Deleted', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1767,20 +1791,26 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: 'EF4444'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
-            children: [new Paragraph('Files Modified')]
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Modified', alignment: AlignmentType.LEFT })]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1790,16 +1820,20 @@ const memberLabelMap = useMemo(() => {
                     size: 24,
                     color: 'F59E0B'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
         ]
       }),
       new TableRow({
+        height: { value: 500, rule: 'atLeast' },
         children: [
           new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1808,12 +1842,15 @@ const memberLabelMap = useMemo(() => {
                     bold: true,
                     color: 'FFFFFF'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           }),
           new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
             shading: { fill: '1E40AF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
             children: [
               new Paragraph({
                 children: [
@@ -1823,7 +1860,8 @@ const memberLabelMap = useMemo(() => {
                     size: 26,
                     color: 'FFFFFF'
                   })
-                ]
+                ],
+                alignment: AlignmentType.LEFT
               })
             ]
           })
@@ -1892,7 +1930,7 @@ const memberLabelMap = useMemo(() => {
             }
 
             // Helper function to parse mixed markdown formatting
-            function parseFormattedText(text: string): any[] {
+            function parseFormattedText(text: string, isFullLine: boolean = false): any[] {
               const children: any[] = [];
               let currentPos = 0;
               
@@ -1915,22 +1953,26 @@ const memberLabelMap = useMemo(() => {
                 // Bold + Italic: **`text`**
                 if (matchedText.startsWith('**') && matchedText.includes('`')) {
                   const innerText = matchedText.slice(2, -2).replace(/`/g, '');
+                  const isStandalone = isFullLine && text.trim() === matchedText;
                   children.push(
                     new TextRun({
                       text: innerText,
                       bold: true,
                       italics: true,
-                      size: 22
+                      size: isStandalone ? 26 : 22,
+                      color: isStandalone ? '1E40AF' : undefined
                     })
                   );
                 }
                 // Bold: **text**
                 else if (matchedText.startsWith('**') && matchedText.endsWith('**')) {
+                  const isStandalone = isFullLine && text.trim() === matchedText;
                   children.push(
                     new TextRun({
                       text: matchedText.slice(2, -2),
                       bold: true,
-                      size: 22
+                      size: isStandalone ? 26 : 22,
+                      color: isStandalone ? '1E40AF' : undefined
                     })
                   );
                 }
@@ -1957,16 +1999,25 @@ const memberLabelMap = useMemo(() => {
                   })
                 );
               }
-              
+
               return children.length > 0 ? children : [new TextRun({ text: text, size: 22 })];
             }
 
-            // Format bullet points
-            if (trimmedLine.startsWith('*') || trimmedLine.startsWith('-')) {
+            // Check if line is just **text**
+            if (trimmedLine.startsWith('**') && trimmedLine.endsWith('**') && trimmedLine.length > 4) {
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(trimmedLine, true),
+                  spacing: { after: 100, before: 100 }
+                })
+              );
+            }
+            // Format bullet points (but not **bold** text)
+            else if ((trimmedLine.startsWith('*') && !trimmedLine.startsWith('**')) || trimmedLine.startsWith('-')) {
               const bulletText = trimmedLine.replace(/^[\*\-]\s*/, '').trim();
               paragraphs.push(
                 new Paragraph({
-                  children: parseFormattedText(bulletText),
+                  children: parseFormattedText(bulletText, false),
                   spacing: { after: 80, before: 40, line: 260 },
                   indent: { left: 720 },
                   bullet: {
@@ -1993,7 +2044,7 @@ const memberLabelMap = useMemo(() => {
             else if (trimmedLine.endsWith(':')) {
               paragraphs.push(
                 new Paragraph({
-                  children: parseFormattedText(trimmedLine),
+                  children: parseFormattedText(trimmedLine, false),
                   spacing: { after: 80, before: 120, line: 260 }
                 })
               );
@@ -2002,7 +2053,7 @@ const memberLabelMap = useMemo(() => {
             else if (trimmedLine.length > 0) {
               paragraphs.push(
                 new Paragraph({
-                  children: parseFormattedText(trimmedLine),
+                  children: parseFormattedText(trimmedLine, false),
                   spacing: { after: 100, line: 280 },
                   alignment: AlignmentType.JUSTIFIED
                 })
@@ -2079,6 +2130,683 @@ const memberLabelMap = useMemo(() => {
       const link = document.createElement('a');
       link.href = url;
       const filename = `summary-${analyzeResult.member}-${analyzeResult.startDate}-to-${analyzeResult.endDate}.docx`;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  function downloadFullReport() {
+    if (!analyzeResult) return;
+    
+    // Calculate summary statistics
+    let totalPRs = 0;
+    let totalFilesAdded = 0;
+    let totalFilesDeleted = 0;
+    let totalFilesModified = 0;
+    const daysActive = new Set<string>();
+    
+    if (analyzeResult.taskAnalyses && analyzeResult.taskAnalyses.length > 0) {
+      analyzeResult.taskAnalyses.forEach((task: any) => {
+        daysActive.add(task.date);
+        if (task.prDetails && task.prDetails.length > 0) {
+          totalPRs += task.prDetails.length;
+          task.prDetails.forEach((pr: any) => {
+            totalFilesAdded += pr.filesAdded ?? 0;
+            totalFilesDeleted += pr.filesDeleted ?? 0;
+            totalFilesModified += pr.filesModified ?? 0;
+          });
+        }
+      });
+    }
+
+    const paragraphs: Paragraph[] = [];
+
+    // Title
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: 'FULL WORK REPORT',
+            bold: true,
+            size: 32,
+            color: '1E40AF'
+          })
+        ],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 0 }
+      })
+    );
+
+    // Decorative line
+    paragraphs.push(
+      new Paragraph({
+        children: [new TextRun('')],
+        border: {
+          bottom: {
+            color: '2563EB',
+            space: 0,
+            style: BorderStyle.DOUBLE,
+            size: 12
+          }
+        },
+        spacing: { after: 300 }
+      })
+    );
+
+    // Member Name
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Team Member: ${analyzeResult.member}`,
+            bold: true,
+            size: 24,
+            color: '1E40AF'
+          })
+        ],
+        spacing: { after: 80, before: 100 }
+      })
+    );
+    
+    // Report Period
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Report Period: ${analyzeResult.startDate} → ${analyzeResult.endDate}`,
+            size: 22
+          })
+        ],
+        spacing: { after: 80 }
+      })
+    );
+    
+    // Generated Date
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Generated: ${new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`,
+            size: 22,
+            italics: true,
+            color: '64748B'
+          })
+        ],
+        spacing: { after: 300 }
+      })
+    );
+
+    // Key Metrics Header
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: 'KEY PERFORMANCE METRICS',
+            bold: true,
+            size: 26,
+            color: '1E40AF'
+          })
+        ],
+        spacing: { after: 200, before: 100 }
+      })
+    );
+
+    // Metrics Table
+    const metricsRows = [
+      new TableRow({
+        height: { value: 600, rule: 'atLeast' },
+        children: [
+          new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            shading: { fill: '1E40AF' },
+            margins: { top: 150, bottom: 150, left: 50, right: 50 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Metric',
+                    bold: true,
+                    color: 'FFFFFF',
+                    size: 28
+                  })
+                ],
+                alignment: AlignmentType.CENTER
+              })
+            ]
+          }),
+          new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            shading: { fill: '1E40AF' },
+            margins: { top: 150, bottom: 150, left: 50, right: 50 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Value',
+                    bold: true,
+                    color: 'FFFFFF',
+                    size: 28
+                  })
+                ],
+                alignment: AlignmentType.CENTER
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        height: { value: 500, rule: 'atLeast' },
+        children: [
+          new TableCell({
+            shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Total Pull Requests', alignment: AlignmentType.LEFT })]
+          }),
+          new TableCell({
+            shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: totalPRs.toString(),
+                    bold: true,
+                    size: 26,
+                    color: '0EA5E9'
+                  })
+                ],
+                alignment: AlignmentType.LEFT
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        height: { value: 500, rule: 'atLeast' },
+        children: [
+          new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Days Active', alignment: AlignmentType.LEFT })]
+          }),
+          new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: daysActive.size.toString(),
+                    bold: true,
+                    size: 26,
+                    color: '0EA5E9'
+                  })
+                ],
+                alignment: AlignmentType.LEFT
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        height: { value: 500, rule: 'atLeast' },
+        children: [
+          new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Added', alignment: AlignmentType.LEFT })]
+          }),
+          new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: totalFilesAdded.toString(),
+                    bold: true,
+                    size: 26,
+                    color: '22C55E'
+                  })
+                ],
+                alignment: AlignmentType.LEFT
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        height: { value: 500, rule: 'atLeast' },
+        children: [
+          new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Deleted', alignment: AlignmentType.LEFT })]
+          }),
+          new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: totalFilesDeleted.toString(),
+                    bold: true,
+                    size: 26,
+                    color: 'EF4444'
+                  })
+                ],
+                alignment: AlignmentType.LEFT
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        height: { value: 500, rule: 'atLeast' },
+        children: [
+          new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [new Paragraph({ text: 'Files Modified', alignment: AlignmentType.LEFT })]
+          }),
+          new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            shading: { fill: 'F0F9FF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: totalFilesModified.toString(),
+                    bold: true,
+                    size: 26,
+                    color: 'F59E0B'
+                  })
+                ],
+                alignment: AlignmentType.LEFT
+              })
+            ]
+          })
+        ]
+      }),
+      new TableRow({
+        height: { value: 500, rule: 'atLeast' },
+        children: [
+          new TableCell({
+            width: { size: 40, type: WidthType.PERCENTAGE },
+            shading: { fill: '1E40AF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: 'Total Files Changed',
+                    bold: true,
+                    color: 'FFFFFF'
+                  })
+                ],
+                alignment: AlignmentType.LEFT
+              })
+            ]
+          }),
+          new TableCell({
+            width: { size: 20, type: WidthType.PERCENTAGE },
+            shading: { fill: '1E40AF' },
+            margins: { top: 100, bottom: 100, left: 50, right: 50 },
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: (totalFilesAdded + totalFilesDeleted + totalFilesModified).toString(),
+                    bold: true,
+                    size: 28,
+                    color: 'FFFFFF'
+                  })
+                ],
+                alignment: AlignmentType.LEFT
+              })
+            ]
+          })
+        ]
+      })
+    ];
+
+    paragraphs.push(
+      new Table({
+        width: { size: 100, type: WidthType.PERCENTAGE },
+        rows: metricsRows
+      }) as unknown as Paragraph
+    );
+
+    // Spacing
+    paragraphs.push(
+      new Paragraph({
+        children: [new TextRun('')],
+        spacing: { after: 300, before: 200 }
+      })
+    );
+
+    // Work Details Section
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `${analyzeResult.member} DETAILED WORK SUMMARY`,
+            bold: true,
+            size: 26,
+            color: '1E40AF'
+          })
+        ],
+        spacing: { after: 200, before: 100 }
+      })
+    );
+
+    if (analyzeResult.taskAnalyses && analyzeResult.taskAnalyses.length > 0) {
+      analyzeResult.taskAnalyses.forEach((task: any, dayIndex: number) => {
+        // Add date header
+        paragraphs.push(
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: task.date,
+                bold: true,
+                size: 24,
+                color: '2563EB'
+              })
+            ],
+            spacing: { before: 150, after: 100 }
+          })
+        );
+
+        // Add PR details
+        if (task.prDetails && task.prDetails.length > 0) {
+          paragraphs.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Pull Requests (${task.prDetails.length}):`,
+                  bold: true,
+                  size: 22,
+                  color: '1E40AF'
+                })
+              ],
+              spacing: { after: 100 }
+            })
+          );
+
+          task.prDetails.forEach((pr: any, idx: number) => {
+            paragraphs.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `${idx + 1}. ${pr.task}`,
+                    bold: true,
+                    size: 22
+                  })
+                ],
+                indent: { left: 360 },
+                spacing: { after: 50 }
+              })
+            );
+            paragraphs.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `Branch: ${pr.branchName}`,
+                    size: 20
+                  })
+                ],
+                indent: { left: 720 },
+                spacing: { after: 40 }
+              })
+            );
+            paragraphs.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `Files: +${pr.filesAdded} -${pr.filesDeleted} ~${pr.filesModified} (total: ${pr.fileChanges})`,
+                    size: 20
+                  })
+                ],
+                indent: { left: 720 },
+                spacing: { after: 40 }
+              })
+            );
+            paragraphs.push(
+              new Paragraph({
+                children: [
+                  new TextRun({
+                    text: `Commit: ${pr.commitName}`,
+                    size: 20
+                  })
+                ],
+                indent: { left: 720 },
+                spacing: { after: 100 }
+              })
+            );
+          });
+        }
+
+        // Add analysis
+        if (task.analysis && task.analysis.text) {
+          paragraphs.push(
+            new Paragraph({
+              children: [
+                new TextRun({
+                  text: `Analysis:`,
+                  bold: true,
+                  size: 22,
+                  color: '1E40AF'
+                })
+              ],
+              spacing: { after: 100 }
+            })
+          );
+
+          const analysisText = task.analysis.text;
+          const lines = analysisText.split('\n').filter((line: string) => line.trim());
+          
+          lines.forEach((line: string) => {
+            const trimmedLine = line.trim();
+            
+            if (trimmedLine.startsWith('#') || trimmedLine.startsWith('```')) {
+              return;
+            }
+
+            // Helper function to parse mixed markdown formatting
+            function parseFormattedText(text: string, isFullLine: boolean = false): any[] {
+              const children: any[] = [];
+              let currentPos = 0;
+              
+              // Regex to find **`bold italic`**, **bold**, `italic`, and plain text
+              const regex = /(\*\*`[^`]+`\*\*|\*\*[^*]+\*\*|`[^`]+`)/g;
+              let match;
+              
+              while ((match = regex.exec(text)) !== null) {
+                // Add plain text before this match
+                if (match.index > currentPos) {
+                  children.push(
+                    new TextRun({
+                      text: text.substring(currentPos, match.index),
+                      size: 22
+                    })
+                  );
+                }
+                
+                const matchedText = match[0];
+                // Bold + Italic: **`text`**
+                if (matchedText.startsWith('**') && matchedText.includes('`')) {
+                  const innerText = matchedText.slice(2, -2).replace(/`/g, '');
+                  const isStandalone = isFullLine && text.trim() === matchedText;
+                  children.push(
+                    new TextRun({
+                      text: innerText,
+                      bold: true,
+                      italics: true,
+                      size: isStandalone ? 26 : 22,
+                      color: isStandalone ? '1E40AF' : undefined
+                    })
+                  );
+                }
+                // Bold: **text**
+                else if (matchedText.startsWith('**') && matchedText.endsWith('**')) {
+                  const isStandalone = isFullLine && text.trim() === matchedText;
+                  children.push(
+                    new TextRun({
+                      text: matchedText.slice(2, -2),
+                      bold: true,
+                      size: isStandalone ? 26 : 22,
+                      color: isStandalone ? '1E40AF' : undefined
+                    })
+                  );
+                }
+                // Italic: `text`
+                else if (matchedText.startsWith('`') && matchedText.endsWith('`')) {
+                  children.push(
+                    new TextRun({
+                      text: matchedText.slice(1, -1),
+                      italics: true,
+                      size: 22
+                    })
+                  );
+                }
+                
+                currentPos = match.index + matchedText.length;
+              }
+              
+              // Add remaining plain text
+              if (currentPos < text.length) {
+                children.push(
+                  new TextRun({
+                    text: text.substring(currentPos),
+                    size: 22
+                  })
+                );
+              }
+              
+              return children.length > 0 ? children : [new TextRun({ text: text, size: 22 })];
+            }
+
+            // Check if line is just **text**
+            if (trimmedLine.startsWith('**') && trimmedLine.endsWith('**') && trimmedLine.length > 4) {
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(trimmedLine, true),
+                  spacing: { after: 100, before: 100 }
+                })
+              );
+            }
+            // Format bullet points (but not **bold** text)
+            else if ((trimmedLine.startsWith('*') && !trimmedLine.startsWith('**')) || trimmedLine.startsWith('-')) {
+              const bulletText = trimmedLine.replace(/^[\*\-]\s*/, '').trim();
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(bulletText, false),
+                  spacing: { after: 80, before: 40, line: 260 },
+                  indent: { left: 720 },
+                  bullet: {
+                    level: 0
+                  }
+                })
+              );
+            }
+            // Bold lines with colons (section headers)
+            else if (trimmedLine.endsWith(':')) {
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(trimmedLine, false),
+                  spacing: { after: 80, before: 120, line: 260 }
+                })
+              );
+            }
+            // Regular paragraphs
+            else if (trimmedLine.length > 0) {
+              paragraphs.push(
+                new Paragraph({
+                  children: parseFormattedText(trimmedLine, false),
+                  spacing: { after: 100, line: 280 },
+                  alignment: AlignmentType.JUSTIFIED
+                })
+              );
+            }
+          });
+        }
+
+        // Add spacing between days
+        paragraphs.push(
+          new Paragraph({
+            children: [new TextRun('')],
+            spacing: { after: 200 }
+          })
+        );
+      });
+    }
+
+    // Footer spacing
+    paragraphs.push(
+      new Paragraph({
+        children: [new TextRun('')],
+        spacing: { before: 400 }
+      })
+    );
+
+    // Footer line
+    paragraphs.push(
+      new Paragraph({
+        children: [new TextRun('─'.repeat(60))],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 150 }
+      })
+    );
+
+    // Footer text
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: 'This is a comprehensive work report for management and client review.',
+            italics: true,
+            size: 20,
+            color: '64748B'
+          })
+        ],
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 50 }
+      })
+    );
+
+    paragraphs.push(
+      new Paragraph({
+        children: [
+          new TextRun({
+            text: `Confidential - ${new Date().getFullYear()}`,
+            bold: true,
+            size: 20,
+            color: '64748B'
+          })
+        ],
+        alignment: AlignmentType.CENTER
+      })
+    );
+
+    const doc = new Document({
+      sections: [{
+        children: paragraphs as any
+      }]
+    });
+
+    Packer.toBlob(doc).then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `full-report-${analyzeResult.member}-${analyzeResult.startDate}-to-${analyzeResult.endDate}.docx`;
       link.download = filename;
       document.body.appendChild(link);
       link.click();
@@ -2478,25 +3206,44 @@ const memberLabelMap = useMemo(() => {
                     ))}
 
                     {/* Download buttons */}
-                    <div className="flex gap-2 pt-4 border-t flex-wrap">
+                    <div className="pt-4 border-t">
+                      <div className="flex gap-2 flex-wrap items-center">
+                        <button 
+                            onClick={downloadSummaryReport}
+                            className="px-3 py-2 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+                          >
+                            Summary Report
+                          </button>
+                      {showMoreOptions && (
+                        <>
+                          <button 
+                            onClick={downloadFullReport}
+                            className="px-3 py-2 bg-indigo-600 text-white text-sm rounded hover:bg-indigo-700"
+                          >
+                            Full Report
+                          </button>
+                          <button 
+                            onClick={downloadAnalysis}
+                            className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                          >
+                            Download JSON
+                          </button>
+                          <button 
+                            onClick={downloadAnalysisAsText}
+                            className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                          >
+                            Download Report
+                          </button>
+                        </>
+                      )}
                       <button 
-                        onClick={downloadSummaryReport}
-                        className="px-3 py-2 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
-                      >
-                        Summary Report
-                      </button>
-                      <button 
-                        onClick={downloadAnalysis}
-                        className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
-                      >
-                        Download JSON
-                      </button>
-                      <button 
-                        onClick={downloadAnalysisAsText}
-                        className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-                      >
-                        Download Report
-                      </button>
+                          onClick={() => setShowMoreOptions(!showMoreOptions)}
+                          className="px-3 py-2 bg-gray-600 text-white text-sm rounded hover:bg-gray-700 flex items-center gap-1"
+                        >
+                          {showMoreOptions ? 'Hide Options' : 'More Options'} 
+                        </button>
+                        
+                      </div>
                     </div>
                   </>
                 ) : analyzeLoading ? (
