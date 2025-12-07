@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Image from 'next/image';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle } from 'docx';
 
 const CHART_COLORS = [
   '#4f46e5', '#16a34a', '#f97316', '#0ea5e9', '#ec4899',
@@ -1453,6 +1454,158 @@ const memberLabelMap = useMemo(() => {
     URL.revokeObjectURL(url);
   }
 
+  function downloadSummaryReport() {
+    if (!analyzeResult) return;
+    
+    // Calculate summary statistics
+    let totalPRs = 0;
+    let totalFilesAdded = 0;
+    let totalFilesDeleted = 0;
+    let totalFilesModified = 0;
+    const daysActive = new Set<string>();
+    
+    if (analyzeResult.taskAnalyses && analyzeResult.taskAnalyses.length > 0) {
+      analyzeResult.taskAnalyses.forEach((task: any) => {
+        daysActive.add(task.date);
+        if (task.prDetails && task.prDetails.length > 0) {
+          totalPRs += task.prDetails.length;
+          task.prDetails.forEach((pr: any) => {
+            totalFilesAdded += pr.filesAdded ?? 0;
+            totalFilesDeleted += pr.filesDeleted ?? 0;
+            totalFilesModified += pr.filesModified ?? 0;
+          });
+        }
+      });
+    }
+
+    const paragraphs: Paragraph[] = [];
+
+    // Title
+    paragraphs.push(
+      new Paragraph({
+        text: 'WORK SUMMARY REPORT',
+        heading: HeadingLevel.HEADING_1,
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 200 }
+      })
+    );
+
+    // Header Info
+    paragraphs.push(
+      new Paragraph({
+        text: `Team Member: ${analyzeResult.member}`,
+        spacing: { after: 100 }
+      })
+    );
+    paragraphs.push(
+      new Paragraph({
+        text: `Period: ${analyzeResult.startDate} to ${analyzeResult.endDate}`,
+        spacing: { after: 100 }
+      })
+    );
+    paragraphs.push(
+      new Paragraph({
+        text: `Report Date: ${new Date().toLocaleDateString()}`,
+        spacing: { after: 200 }
+      })
+    );
+
+    // Key Metrics Section
+    paragraphs.push(
+      new Paragraph({
+        text: 'KEY METRICS',
+        heading: HeadingLevel.HEADING_2,
+        spacing: { after: 100 }
+      })
+    );
+
+    paragraphs.push(
+      new Paragraph({
+        text: `Total Pull Requests: ${totalPRs}`,
+        spacing: { after: 50 }
+      })
+    );
+    paragraphs.push(
+      new Paragraph({
+        text: `Days Active: ${daysActive.size}`,
+        spacing: { after: 50 }
+      })
+    );
+    paragraphs.push(
+      new Paragraph({
+        text: `Files Added: ${totalFilesAdded}`,
+        spacing: { after: 50 }
+      })
+    );
+    paragraphs.push(
+      new Paragraph({
+        text: `Files Deleted: ${totalFilesDeleted}`,
+        spacing: { after: 50 }
+      })
+    );
+    paragraphs.push(
+      new Paragraph({
+        text: `Files Modified: ${totalFilesModified}`,
+        spacing: { after: 50 }
+      })
+    );
+    paragraphs.push(
+      new Paragraph({
+        text: `Total Files Changed: ${totalFilesAdded + totalFilesDeleted + totalFilesModified}`,
+        spacing: { after: 200 }
+      })
+    );
+
+    // Work Summary Section
+    paragraphs.push(
+      new Paragraph({
+        text: 'WORK SUMMARY',
+        heading: HeadingLevel.HEADING_2,
+        spacing: { after: 100 }
+      })
+    );
+
+    if (analyzeResult.taskAnalyses && analyzeResult.taskAnalyses.length > 0) {
+      analyzeResult.taskAnalyses.forEach((task: any) => {
+        if (task.analysis && task.analysis.text) {
+          paragraphs.push(
+            new Paragraph({
+              text: task.analysis.text,
+              spacing: { after: 150 }
+            })
+          );
+        }
+      });
+    }
+
+    // Footer
+    paragraphs.push(
+      new Paragraph({
+        text: 'Generated for management and client review',
+        spacing: { before: 200 },
+        alignment: AlignmentType.CENTER
+      })
+    );
+
+    const doc = new Document({
+      sections: [{
+        children: paragraphs
+      }]
+    });
+
+    Packer.toBlob(doc).then((blob) => {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const filename = `summary-${analyzeResult.member}-${analyzeResult.startDate}-to-${analyzeResult.endDate}.docx`;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    });
+  }
+
   const fetchRowDetailsForContribution = useCallback(async (row: ContributionRow) => {
     const key = getContributionRowId(row);
     if (rowDetails[key] || rowDetailsLoading[key]) {
@@ -1830,7 +1983,7 @@ const memberLabelMap = useMemo(() => {
 
                         {task.analysis && (
                           <div className="bg-blue-50 border border-blue-200 rounded p-3">
-                            <div className="text-xs font-semibold text-gray-800 mb-2">AI Analysis</div>
+                            <div className="text-xs font-semibold text-gray-800 mb-2">Github Report Analysis</div>
                             {task.analysis.text ? (
                               <div className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{task.analysis.text}</div>
                             ) : task.analysis.error ? (
@@ -1844,7 +1997,13 @@ const memberLabelMap = useMemo(() => {
                     ))}
 
                     {/* Download buttons */}
-                    <div className="flex gap-2 pt-4 border-t">
+                    <div className="flex gap-2 pt-4 border-t flex-wrap">
+                      <button 
+                        onClick={downloadSummaryReport}
+                        className="px-3 py-2 bg-purple-600 text-white text-sm rounded hover:bg-purple-700"
+                      >
+                        Summary Report
+                      </button>
                       <button 
                         onClick={downloadAnalysis}
                         className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
