@@ -465,7 +465,7 @@ export default function CenixGitHubReport() {
 const [graphData, setGraphData] = useState<GraphAggregateRow[] | null>(null);
   const [lineSeries, setLineSeries] = useState<MemberLineSeries[] | null>(null);
   const [showGraph, setShowGraph] = useState(false);
-  const [graphMetric, setGraphMetric] = useState<GraphMetric>('contributions');
+  const [graphMetric, setGraphMetric] = useState<GraphMetric>('tasks');
   const [graphType, setGraphType] = useState<GraphType>('bar');
   const [showAxes, setShowAxes] = useState(true);
 
