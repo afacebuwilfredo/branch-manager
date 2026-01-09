@@ -383,6 +383,14 @@ const [graphData, setGraphData] = useState<GraphAggregateRow[] | null>(null);
   const [graphMetric, setGraphMetric] = useState<GraphMetric>('contributions');
   const [graphType, setGraphType] = useState<GraphType>('bar');
   const [showAxes, setShowAxes] = useState(true);
+
+  // Analyze work modal state
+  const [analyzeModalOpen, setAnalyzeModalOpen] = useState(false);
+  const [analyzeMember, setAnalyzeMember] = useState<string | null>(null);
+  const [analyzeStartDate, setAnalyzeStartDate] = useState(startDate);
+  const [analyzeEndDate, setAnalyzeEndDate] = useState(endDate);
+  const [analyzeLoading, setAnalyzeLoading] = useState(false);
+  const [analyzeResult, setAnalyzeResult] = useState<any | null>(null);
   const [visibleMembers, setVisibleMembers] = useState<Set<string>>(new Set());
   const [graphCompanyFilter, setGraphCompanyFilter] = useState<string>('all');
 
@@ -1264,6 +1272,121 @@ const memberLabelMap = useMemo(() => {
     }
   }
 
+  const availableMembers = useMemo(() => {
+    if (!reportData || !reportData.rows) return [] as string[];
+    const seen = new Set<string>();
+    const values: string[] = [];
+    for (const r of reportData.rows) {
+      const id = (r.memberLogin || r.member || r.memberDisplay || '').trim();
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        values.push(id);
+      }
+    }
+    return values;
+  }, [reportData]);
+
+  function openAnalyzeModal() {
+    setAnalyzeStartDate(startDate);
+    setAnalyzeEndDate(endDate);
+    setAnalyzeMember(availableMembers[0] ?? null);
+    setAnalyzeResult(null);
+    setAnalyzeModalOpen(true);
+  }
+
+  async function submitAnalyze() {
+    if (!analyzeMember) return;
+    setAnalyzeLoading(true);
+    setAnalyzeResult(null);
+    try {
+      const resp = await fetch('/api/analyze-work', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          member: analyzeMember, 
+          startDate: analyzeStartDate, 
+          endDate: analyzeEndDate,
+          reportRows: reportData?.rows ?? []
+        })
+      });
+      if (!resp.ok) {
+        const text = await resp.text();
+        throw new Error(text || 'Failed to analyze');
+      }
+      const json = await resp.json();
+      setAnalyzeResult(json);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to analyze work');
+    } finally {
+      setAnalyzeLoading(false);
+    }
+  }
+
+  function downloadAnalysis() {
+    if (!analyzeResult) return;
+    const data = JSON.stringify(analyzeResult, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const filename = `analysis-${analyzeResult.member}-${analyzeResult.startDate}-to-${analyzeResult.endDate}.json`;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadAnalysisAsText() {
+    if (!analyzeResult) return;
+    let text = `WORK ANALYSIS REPORT\n`;
+    text += `=====================================\n\n`;
+    text += `Member: ${analyzeResult.member}\n`;
+    text += `Period: ${analyzeResult.startDate} to ${analyzeResult.endDate}\n`;
+    text += `Generated: ${analyzeResult.timestamp}\n\n`;
+
+    if (analyzeResult.taskAnalyses && analyzeResult.taskAnalyses.length > 0) {
+      analyzeResult.taskAnalyses.forEach((task: any) => {
+        text += `\nDAY: ${task.date}\n`;
+        text += `-------------------------------------\n`;
+        
+        if (task.prDetails && task.prDetails.length > 0) {
+          text += `Pull Requests (${task.prDetails.length}):\n\n`;
+          task.prDetails.forEach((pr: any, idx: number) => {
+            text += `  ${idx + 1}. ${pr.task}\n`;
+            text += `     Branch: ${pr.branchName}\n`;
+            text += `     Files: +${pr.filesAdded} -${pr.filesDeleted} ~${pr.filesModified} (total: ${pr.fileChanges})\n`;
+            text += `     Commit: ${pr.commitName}\n`;
+            text += `     PR: ${pr.pullRequestUrl}\n\n`;
+          });
+        }
+
+        if (task.analysis) {
+          text += `Analysis:\n`;
+          if (task.analysis.text) {
+            text += task.analysis.text;
+          } else if (task.analysis.error) {
+            text += `Error: ${task.analysis.error}`;
+          } else {
+            text += JSON.stringify(task.analysis, null, 2);
+          }
+        }
+        text += '\n\n';
+      });
+    }
+
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const filename = `analysis-${analyzeResult.member}-${analyzeResult.startDate}-to-${analyzeResult.endDate}.txt`;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
   const fetchRowDetailsForContribution = useCallback(async (row: ContributionRow) => {
     const key = getContributionRowId(row);
     if (rowDetails[key] || rowDetailsLoading[key]) {
@@ -1498,6 +1621,13 @@ const memberLabelMap = useMemo(() => {
                   {exporting ? 'Exporting...' : 'Export all CSV'}
                 </button>
                 <button
+                  onClick={openAnalyzeModal}
+                  disabled={false}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50"
+                >
+                  Analyze work
+                </button>
+                <button
                   onClick={() => void handleGraphReportClick()}
                   disabled={graphLoading}
                   className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 disabled:opacity-50"
@@ -1518,6 +1648,147 @@ const memberLabelMap = useMemo(() => {
             )}
           </div>
         </div>
+
+        {/* Analyze modal (hidden until opened) */}
+        {analyzeModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+            <div className="bg-white rounded shadow-lg p-6 w-full max-w-4xl max-h-[90vh] flex flex-col">
+              <h3 className="text-lg font-semibold mb-4">Analyze work</h3>
+              
+              {/* Form Section */}
+              <div className="flex gap-4 mb-4 pb-4 border-b">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">Member</label>
+                  {availableMembers.length > 0 ? (
+                    <select className="p-2 border rounded w-full" value={analyzeMember ?? ''} onChange={(e) => setAnalyzeMember(e.target.value)}>
+                      <option value="">-- select member --</option>
+                      {availableMembers.map((m) => (
+                        <option key={m} value={m}>{m}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input 
+                      type="text" 
+                      placeholder="Enter member name (e.g., wilfredo)" 
+                      className="p-2 border rounded w-full" 
+                      value={analyzeMember ?? ''} 
+                      onChange={(e) => setAnalyzeMember(e.target.value)} 
+                    />
+                  )}
+                  <div className="text-xs text-gray-500 mt-1">
+                    {availableMembers.length === 0 && 'Generate a report first to see available members, or type a name'}
+                  </div>
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">Start Date</label>
+                  <input type="date" className="p-2 border rounded w-full" value={analyzeStartDate} onChange={(e) => setAnalyzeStartDate(e.target.value)} />
+                </div>
+                <div className="flex-1">
+                  <label className="block text-sm font-medium mb-1">End Date</label>
+                  <input type="date" className="p-2 border rounded w-full" value={analyzeEndDate} onChange={(e) => setAnalyzeEndDate(e.target.value)} />
+                </div>
+                <div className="flex items-end gap-2">
+                  <button onClick={() => { setAnalyzeModalOpen(false); }} className="px-3 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300">Cancel</button>
+                  <button onClick={submitAnalyze} disabled={analyzeLoading || !analyzeMember} className="px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700 disabled:opacity-50">
+                    {analyzeLoading ? 'Analyzing...' : 'Analyze'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Results Section */}
+              <div className="flex-1 overflow-auto space-y-6">
+                {analyzeResult && analyzeResult.taskAnalyses && analyzeResult.taskAnalyses.length > 0 ? (
+                  <>
+                    {analyzeResult.taskAnalyses.map((task: any, idx: number) => (
+                      <div key={idx} className="border rounded p-4 bg-gray-50">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-3">{task.date}</h4>
+                        
+                        {task.prDetails && task.prDetails.length > 0 && (
+                          <div className="mb-4">
+                            <div className="text-xs font-medium text-gray-600 mb-2">Pull Requests ({task.prDetails.length})</div>
+                            <div className="space-y-2">
+                              {task.prDetails.map((pr: any, idx: number) => (
+                                <div key={idx} className="bg-white p-3 rounded border border-gray-200">
+                                  <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                      <div className="text-sm font-medium text-gray-900">{pr.task}</div>
+                                      <div className="text-xs text-gray-500 font-mono">{pr.branchName}</div>
+                                    </div>
+                                    <a href={pr.pullRequestUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:text-blue-800">
+                                      Open PR ↗
+                                    </a>
+                                  </div>
+                                  <div className="grid grid-cols-4 gap-2 text-xs">
+                                    <div className="bg-green-50 p-2 rounded">
+                                      <div className="font-medium text-green-700">+{pr.filesAdded}</div>
+                                      <div className="text-gray-600">Added</div>
+                                    </div>
+                                    <div className="bg-red-50 p-2 rounded">
+                                      <div className="font-medium text-red-700">-{pr.filesDeleted}</div>
+                                      <div className="text-gray-600">Deleted</div>
+                                    </div>
+                                    <div className="bg-blue-50 p-2 rounded">
+                                      <div className="font-medium text-blue-700">~{pr.filesModified}</div>
+                                      <div className="text-gray-600">Modified</div>
+                                    </div>
+                                    <div className="bg-gray-100 p-2 rounded">
+                                      <div className="font-medium text-gray-900">{pr.fileChanges}</div>
+                                      <div className="text-gray-600">Total</div>
+                                    </div>
+                                  </div>
+                                  {pr.commitName && (
+                                    <div className="text-xs text-gray-600 mt-2 font-mono">Commit: {pr.commitName}</div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {task.analysis && (
+                          <div className="bg-blue-50 border border-blue-200 rounded p-3">
+                            <div className="text-xs font-semibold text-gray-800 mb-2">AI Analysis</div>
+                            {task.analysis.text ? (
+                              <div className="text-xs text-gray-700 whitespace-pre-wrap leading-relaxed">{task.analysis.text}</div>
+                            ) : task.analysis.error ? (
+                              <div className="text-xs text-red-600">{task.analysis.error}</div>
+                            ) : (
+                              <div className="text-xs text-gray-700 whitespace-pre-wrap">{JSON.stringify(task.analysis, null, 2)}</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Download buttons */}
+                    <div className="flex gap-2 pt-4 border-t">
+                      <button 
+                        onClick={downloadAnalysis}
+                        className="px-3 py-2 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                      >
+                        Download JSON
+                      </button>
+                      <button 
+                        onClick={downloadAnalysisAsText}
+                        className="px-3 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+                      >
+                        Download Report
+                      </button>
+                    </div>
+                  </>
+                ) : analyzeLoading ? (
+                  <div className="text-center py-8 text-gray-500">Analyzing work...</div>
+                ) : analyzeResult && (!analyzeResult.taskAnalyses || analyzeResult.taskAnalyses.length === 0) ? (
+                  <div className="text-center py-8 text-gray-500">
+                    {analyzeResult.message || 'No contributions found for the selected period.'}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">Click "Analyze" to start</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Results table */}
         {reportData && (
