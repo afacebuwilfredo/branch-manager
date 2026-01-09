@@ -45,21 +45,6 @@ type PullRequestDetailRow = {
   approvedBy: string | null;
   date: string;
   pullRequestUrl: string;
-  localBranchCount?: number;
-};
-
-const isAfafiloRepo = (repository: string) => repository.trim().toLowerCase().startsWith("afafilo/");
-const filterDetailsForRepository = (repository: string, details?: PullRequestDetailRow[]) => {
-  const safeDetails = details ?? [];
-  // For afafilo/loveme, show all details without filtering by branch
-  if (repository.trim().toLowerCase() === "afafilo/loveme") {
-    return safeDetails;
-  }
-  // For other afafilo repos, filter to staging branch only
-  if (isAfafiloRepo(repository)) {
-    return safeDetails.filter((detail) => detail.branchName?.trim().toLowerCase() === "staging");
-  }
-  return safeDetails;
 };
 
 const detailNumberFormatter = new Intl.NumberFormat();
@@ -410,8 +395,8 @@ const metricLabels: Record<GraphMetric, string> = {
   contributions: 'Commits',
   addedLines: 'Modified Lines',
   removedLines: 'Optimized Lines',
-  filesAdded: 'New files',
-  filesDeleted: 'Files Optimized',
+  filesAdded: 'Files Added',
+  filesDeleted: 'Files Deleted',
   filesModified: 'Files Modified'
 };
 const metricOptions: GraphMetric[] = [
@@ -830,10 +815,8 @@ const memberLabelMap = useMemo(() => {
           }
         }
 
-        const stagingDetails = filterDetailsForRepository(contributionRow.repository, detailRows);
-
-        if (stagingDetails.length > 0) {
-          stagingDetails.forEach((detail) => {
+        if (detailRows.length > 0) {
+          detailRows.forEach((detail) => {
             taskRecords.push({
               repository: contributionRow.repository,
               member: memberLabel,
@@ -1042,7 +1025,7 @@ const memberLabelMap = useMemo(() => {
         return detailCache.get(cacheKey)!;
       }
       if (rowDetails[cacheKey]) {
-        const cachedRows = filterDetailsForRepository(row.repository, rowDetails[cacheKey] ?? []);
+        const cachedRows = rowDetails[cacheKey] ?? [];
         detailCache.set(cacheKey, cachedRows);
         return cachedRows;
       }
@@ -1063,7 +1046,7 @@ const memberLabelMap = useMemo(() => {
         }
 
         const data = (await response.json()) as { rows: PullRequestDetailRow[] };
-        const rows = filterDetailsForRepository(row.repository, data.rows ?? []);
+        const rows = data.rows ?? [];
         detailCache.set(cacheKey, rows);
         return rows;
       } catch (error) {
@@ -1137,7 +1120,6 @@ const memberLabelMap = useMemo(() => {
       });
 
       const uniqueRows = Array.from(uniqueRowMap.values());
-      
       if (uniqueRows.length > 0) {
         let processedTasks = 0;
         setGraphBuildProgress({
@@ -1154,7 +1136,6 @@ const memberLabelMap = useMemo(() => {
             }
             const uniqueDetails = Array.from(new Map(detailRows.map((detail) => [detail.id, detail])).values());
             const taskCount = uniqueDetails.length;
-            
             const fileTotals = uniqueDetails.reduce(
               (acc, detail) => {
                 acc.filesAdded += detail.filesAdded ?? 0;
@@ -1207,8 +1188,6 @@ const memberLabelMap = useMemo(() => {
             updateGraphState();
           }
         }
-        
-        updateGraphState();
       }
 
       setGraphBuildProgress(null);
@@ -1311,8 +1290,7 @@ const memberLabelMap = useMemo(() => {
       }
 
       const data = (await response.json()) as { rows: PullRequestDetailRow[] };
-      const rows = data.rows ?? [];
-      setRowDetails((prev) => ({ ...prev, [key]: rows }));
+      setRowDetails((prev) => ({ ...prev, [key]: data.rows }));
     } catch (err) {
       setRowDetailsErrors((prev) => ({
         ...prev,
@@ -1385,7 +1363,7 @@ const memberLabelMap = useMemo(() => {
     <div className="min-h-screen p-6">
       <div className="mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-2">
+        <div className="flex items-center gap-4 mb-6">
           <div className="flex items-center gap-3">
             {user.avatarUrl && (
               <Image
@@ -1407,9 +1385,9 @@ const memberLabelMap = useMemo(() => {
         )}
 
         {/* Controls */}
-        <div className="space-y-4 mb-8">
+        <div className="space-y-6 mb-8">
           {/* Repository selection */}
-          <div className="bg-gray-50 px-4 rounded">
+          <div className="bg-gray-50 p-4 rounded">
             <div className="mb-3 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <label className="flex items-center gap-2">
@@ -1607,14 +1585,11 @@ const memberLabelMap = useMemo(() => {
                   {filteredTableRows.map((row, i) => {
                     const rowKey = getContributionRowId(row);
                     const isExpanded = expandedRowKey === rowKey;
-                    const storedDetailRows = rowDetails[rowKey];
-                    const detailRows = storedDetailRows ?? [];
-                    const filteredDetailRows = filterDetailsForRepository(row.repository, detailRows);
+                    const detailRows = rowDetails[rowKey] ?? [];
                     const detailLoading = rowDetailsLoading[rowKey];
                     const detailError = rowDetailsErrors[rowKey];
                     const memberName = formatMemberLabel(row.member, row.memberDisplay);
                     const companyName = row.memberCompany?.trim() ?? '—';
-                    const hasFetchedDetails = storedDetailRows !== undefined;
 
                     return (
                       <React.Fragment key={rowKey}>
@@ -1634,9 +1609,11 @@ const memberLabelMap = useMemo(() => {
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-gray-700">
                             {detailLoading
                               ? '…'
-                              : hasFetchedDetails
-                                ? filteredDetailRows.length
-                                : '—'}
+                              : detailRows.length > 0
+                                ? detailRows.length
+                                : rowDetails[rowKey]
+                                  ? 0
+                                  : '—'}
                           </td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.contributions}</td>
                           <td className="px-6 py-3 whitespace-nowrap text-sm text-right text-gray-900">{row.addedLines}</td>
@@ -1679,8 +1656,8 @@ const memberLabelMap = useMemo(() => {
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Task</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Branch name</th>
                                           <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">File changes</th>
-                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">New files</th>
-                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files Optimized</th>
+                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files added</th>
+                                          <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files deleted</th>
                                           <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-600">Files modified</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Commit name</th>
                                           <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Approved by</th>
