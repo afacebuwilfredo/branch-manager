@@ -41,35 +41,39 @@ type GitHubGraphQLResponse<T> = {
   errors?: Array<{ message: string }>;
 };
 
+type RepositoryNode = {
+  id: string;
+  nameWithOwner: string;
+};
+
+type PageInfo = {
+  hasNextPage: boolean;
+  endCursor: string | null;
+};
+
 type ViewerReposResponse = {
   viewer: {
     repositories: {
-      pageInfo: {
-        hasNextPage: boolean;
-        endCursor: string | null;
-      };
-      nodes: Array<{
-        id: string;
-        nameWithOwner: string;
-      }>;
+      pageInfo: PageInfo;
+      nodes: RepositoryNode[];
     };
     organizations: {
-      pageInfo: {
-        hasNextPage: boolean;
-        endCursor: string | null;
-      };
+      pageInfo: PageInfo;
       nodes: Array<{
         repositories: {
-          pageInfo: {
-            hasNextPage: boolean;
-            endCursor: string | null;
-          };
-          nodes: Array<{
-            id: string;
-            nameWithOwner: string;
-          }>;
+          pageInfo: PageInfo;
+          nodes: RepositoryNode[];
         };
       }>;
+    };
+  };
+};
+
+type OrgReposResponse = {
+  organization: {
+    repositories: {
+      pageInfo: PageInfo;
+      nodes: RepositoryNode[];
     };
   };
 };
@@ -190,11 +194,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             continue;
           }
 
-          const orgReposBody: GitHubGraphQLResponse<any> = await orgReposResp.json();
+          const orgReposBody: GitHubGraphQLResponse<OrgReposResponse> = await orgReposResp.json();
           
           if (orgReposBody.data?.organization?.repositories?.nodes) {
             const orgRepos = orgReposBody.data.organization.repositories.nodes;
-            orgRepos.forEach((repo: any) => {
+            orgRepos.forEach((repo: RepositoryNode) => {
               if (!repos.has(repo.nameWithOwner)) {
                 repos.add(repo.nameWithOwner);
                 repoObjects.push(repo);
