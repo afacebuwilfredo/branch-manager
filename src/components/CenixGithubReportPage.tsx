@@ -487,7 +487,7 @@ const [graphData, setGraphData] = useState<GraphAggregateRow[] | null>(null);
   const [exportTasksProgress, setExportTasksProgress] = useState<{ processed: number; total: number } | null>(null);
 
 const metricLabels: Record<GraphMetric, string> = {
-  tasks: 'Tasks',
+  tasks: 'Pull Request',
   contributions: 'Commits',
   addedLines: 'Modified Lines',
   removedLines: 'Optimized Lines',
@@ -1292,7 +1292,7 @@ const memberLabelMap = useMemo(() => {
           } finally {
             processedTasks += 1;
             setGraphBuildProgress({
-              label: 'Counting tasks',
+              label: 'Counting Pull Request',
               processed: processedTasks,
               total: uniqueRows.length
             });
@@ -3307,7 +3307,17 @@ const memberLabelMap = useMemo(() => {
                     <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
                       Department
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Task</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      <div className="flex items-center gap-1">
+                        <span>Pull Request</span>
+                        <span 
+                          className="text-gray-400 hover:text-gray-600 cursor-help" 
+                          title="If website count only Staging to Production Pull Request"
+                        >
+                          ℹ
+                        </span>
+                      </div>
+                    </th>
                     <th className="px-6 py-3 text-right">
                       <SortHeaderButton column="contributions" label="Contributions" align="right" />
                     </th>
@@ -3484,6 +3494,12 @@ const memberLabelMap = useMemo(() => {
                 <div className="flex flex-wrap items-center gap-2">
                   {metricOptions.map((option) => {
                     const isActive = graphMetric === option;
+                    const span = option === "tasks" ? (<span 
+                          className="text-gray-400 hover:text-gray-600 cursor-help" 
+                          title="If website count only Staging to Production Pull Request"
+                        >
+                          ℹ
+                        </span>) : '';
                     return (
                       <button
                         key={option}
@@ -3495,7 +3511,7 @@ const memberLabelMap = useMemo(() => {
                         } disabled:opacity-50`}
                         aria-pressed={isActive}
                       >
-                        {metricLabels[option]}
+                        {metricLabels[option]} {span}
                       </button>
                     );
                   })}
